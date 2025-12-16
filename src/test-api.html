@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test - IELTS Backend</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #042d62;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border-left: 4px solid #042d62;
+        }
+        button {
+            background: #042d62;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #053a75;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            border-left: 4px solid #10b981;
+            background: #f0fdf4;
+        }
+        .error {
+            border-left: 4px solid #ef4444;
+            background: #fef2f2;
+        }
+        .info {
+            border-left: 4px solid #3b82f6;
+            background: #eff6ff;
+        }
+        .loading {
+            color: #6b7280;
+        }
+        h3 {
+            margin-top: 0;
+            color: #1f2937;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 IELTS Backend API Test</h1>
+        <p>Bu sahifa backend bilan bog'lanish muammolarini aniqlash uchun test qiladi.</p>
+
+        <!-- 1. CORS & Connection Test -->
+        <div class="test-section">
+            <h3>1️⃣ CORS va Ulanish Testi</h3>
+            <p>Backend serverga oddiy GET so'rov yuborish</p>
+            <button onclick="testConnection()">Test Ulanish</button>
+            <div id="connection-result"></div>
+        </div>
+
+        <!-- 2. GET Tests List -->
+        <div class="test-section">
+            <h3>2️⃣ Testlar Ro'yxatini Olish</h3>
+            <p>GET /api/v1/tests/</p>
+            <button onclick="getTests()">Testlarni Olish</button>
+            <div id="tests-result"></div>
+        </div>
+
+        <!-- 3. POST Create Test -->
+        <div class="test-section">
+            <h3>3️⃣ Yangi Test Yaratish</h3>
+            <p>POST /api/v1/tests/</p>
+            <input type="text" id="test-name" placeholder="Test nomi" value="API Test Demo" style="padding: 8px; margin-right: 10px; border: 1px solid #d1d5db; border-radius: 4px; width: 300px;">
+            <label style="margin-left: 10px;">
+                <input type="checkbox" id="test-active" checked style="margin-right: 5px;">
+                Faol
+            </label>
+            <br><br>
+            <button onclick="createTest()">Test Yaratish (name + is_active faqat)</button>
+            <button onclick="createTestFull()">Test Yaratish (to'liq format)</button>
+            <div id="create-result"></div>
+        </div>
+
+        <!-- 4. GET Test Detail -->
+        <div class="test-section">
+            <h3>4️⃣ Test Tafsilotlarini Olish</h3>
+            <p>GET /api/v1/tests/{id}/</p>
+            <input type="number" id="test-id" placeholder="Test ID" value="1" style="padding: 8px; margin-right: 10px; border: 1px solid #d1d5db; border-radius: 4px; width: 100px;">
+            <button onclick="getTestDetail()">Tafsilotlarni Olish</button>
+            <div id="detail-result"></div>
+        </div>
+
+        <!-- 4.5. Create Reading Section -->
+        <div class="test-section">
+            <h3>4️⃣.5️⃣ Reading Section Yaratish</h3>
+            <p>POST /api/v1/reading/</p>
+            <input type="number" id="reading-test-id" placeholder="Test ID" value="1" style="padding: 8px; margin-right: 10px; border: 1px solid #d1d5db; border-radius: 4px; width: 100px;">
+            <button onclick="createReading()">Reading Section Yaratish</button>
+            <div id="reading-result"></div>
+        </div>
+
+        <!-- 4.6. Create Listening Section -->
+        <div class="test-section">
+            <h3>4️⃣.6️⃣ Listening Section Yaratish</h3>
+            <p>POST /api/v1/listening/</p>
+            <input type="number" id="listening-test-id" placeholder="Test ID" value="1" style="padding: 8px; margin-right: 10px; border: 1px solid #d1d5db; border-radius: 4px; width: 100px;">
+            <button onclick="createListening()">Listening Section Yaratish</button>
+            <div id="listening-result"></div>
+        </div>
+
+        <!-- 5. Authentication Test -->
+        <div class="test-section">
+            <h3>5️⃣ Authentication Test</h3>
+            <p>POST /api/token/</p>
+            <input type="text" id="username" placeholder="Username" style="padding: 8px; margin-right: 10px; border: 1px solid #d1d5db; border-radius: 4px;">
+            <input type="password" id="password" placeholder="Password" style="padding: 8px; margin-right: 10px; border: 1px solid #d1d5db; border-radius: 4px;">
+            <button onclick="testAuth()">Login Test</button>
+            <div id="auth-result"></div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'https://api.samariddin.space/api/v1';
+
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.className = `result ${type}`;
+            element.textContent = message;
+        }
+
+        function showLoading(elementId) {
+            showResult(elementId, '⏳ Yuklanmoqda...', 'loading');
+        }
+
+        // 1. Connection Test
+        async function testConnection() {
+            const resultId = 'connection-result';
+            showLoading(resultId);
+            
+            try {
+                console.log('🔍 Testing connection to:', BASE_URL + '/tests/');
+                
+                const startTime = Date.now();
+                const response = await fetch(`${BASE_URL}/tests/`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                const endTime = Date.now();
+                
+                console.log('📡 Response status:', response.status);
+                console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+                
+                const responseTime = endTime - startTime;
+                
+                if (response.ok) {
+                    showResult(resultId, 
+                        `✅ Ulanish muvaffaqiyatli!\n` +
+                        `Status: ${response.status}\n` +
+                        `Response vaqti: ${responseTime}ms\n` +
+                        `Content-Type: ${response.headers.get('content-type')}`,
+                        'success'
+                    );
+                } else {
+                    const errorText = await response.text();
+                    showResult(resultId, 
+                        `⚠️ Server javob berdi, lekin status: ${response.status}\n` +
+                        `Response: ${errorText}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                console.error('❌ Connection error:', error);
+                showResult(resultId, 
+                    `❌ Xatolik: ${error.message}\n\n` +
+                    `Mumkin bo'lgan sabablar:\n` +
+                    `1. CORS sozlamalari noto'g'ri (Access-Control-Allow-Origin yo'q)\n` +
+                    `2. Server ishlamayapti\n` +
+                    `3. Network muammosi\n` +
+                    `4. URL noto'g'ri\n\n` +
+                    `To'liq xatolik: ${error.stack}`,
+                    'error'
+                );
+            }
+        }
+
+        // 2. Get Tests
+        async function getTests() {
+            const resultId = 'tests-result';
+            showLoading(resultId);
+            
+            try {
+                console.log('🔍 Fetching tests from:', BASE_URL + '/tests/');
+                
+                const response = await fetch(`${BASE_URL}/tests/`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                
+                console.log('📡 Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('📦 Data:', data);
+                    
+                    showResult(resultId, 
+                        `✅ Testlar olindi!\n\n` +
+                        `${JSON.stringify(data, null, 2)}`,
+                        'success'
+                    );
+                } else {
+                    const errorText = await response.text();
+                    console.error('❌ Error response:', errorText);
+                    
+                    showResult(resultId, 
+                        `❌ Status: ${response.status}\n` +
+                        `Response: ${errorText}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                console.error('❌ Fetch error:', error);
+                showResult(resultId, `❌ Xatolik: ${error.message}`, 'error');
+            }
+        }
+
+        // 3. Create Test
+        async function createTest() {
+            const resultId = 'create-result';
+            const testName = document.getElementById('test-name').value;
+            const isActive = document.getElementById('test-active').checked;
+            showLoading(resultId);
+            
+            try {
+                const requestData = {
+                    name: testName,
+                    is_active: isActive
+                };
+                
+                console.log('📤 Creating test with data:', requestData);
+                
+                const response = await fetch(`${BASE_URL}/tests/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData),
+                });
+                
+                console.log('📡 Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Test created:', data);
+                    
+                    showResult(resultId, 
+                        `✅ Test yaratildi!\n\n` +
+                        `${JSON.stringify(data, null, 2)}`,
+                        'success'
+                    );
+                } else {
+                    const errorText = await response.text();
+                    console.error('❌ Error response:', errorText);
+                    
+                    showResult(resultId, 
+                        `❌ Status: ${response.status}\n` +
+                        `Response: ${errorText}\n\n` +
+                        `OpenAPI spec'ga ko'ra kutilgan format:\n` +
+                        `{\n  "name": "string",\n  "is_active": boolean,\n  "reading": {...},\n  "listening": {...},\n  "writing": {...}\n}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                console.error('❌ Error:', error);
+                showResult(resultId, `❌ Xatolik: ${error.message}`, 'error');
+            }
+        }
+
+        // 3. Create Test Full
+        async function createTestFull() {
+            const resultId = 'create-result';
+            const testName = document.getElementById('test-name').value;
+            const isActive = document.getElementById('test-active').checked;
+            showLoading(resultId);
+            
+            try {
+                const requestData = {
+                    name: testName,
+                    is_active: isActive,
+                    reading: {
+                        questions: [
+                            {
+                                text: "What is the main purpose of the passage?",
+                                options: ["To describe a process", "To explain a concept", "To persuade the reader", "To narrate a story"],
+                                answer: "To explain a concept"
+                            }
+                        ]
+                    },
+                    listening: {
+                        questions: [
+                            {
+                                text: "What is the main purpose of the passage?",
+                                options: ["To describe a process", "To explain a concept", "To persuade the reader", "To narrate a story"],
+                                answer: "To explain a concept"
+                            }
+                        ]
+                    },
+                    writing: {
+                        questions: [
+                            {
+                                text: "What is the main purpose of the passage?",
+                                options: ["To describe a process", "To explain a concept", "To persuade the reader", "To narrate a story"],
+                                answer: "To explain a concept"
+                            }
+                        ]
+                    }
+                };
+                
+                console.log('📤 Creating test with data:', requestData);
+                
+                const response = await fetch(`${BASE_URL}/tests/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData),
+                });
+                
+                console.log('📡 Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Test created:', data);
+                    
+                    showResult(resultId, 
+                        `✅ Test yaratildi!\n\n` +
+                        `${JSON.stringify(data, null, 2)}`,
+                        'success'
+                    );
+                } else {
+                    const errorText = await response.text();
+                    console.error('❌ Error response:', errorText);
+                    
+                    showResult(resultId, 
+                        `❌ Status: ${response.status}\n` +
+                        `Response: ${errorText}\n\n` +
+                        `OpenAPI spec'ga ko'ra kutilgan format:\n` +
+                        `{\n  "name": "string",\n  "is_active": boolean,\n  "reading": {...},\n  "listening": {...},\n  "writing": {...}\n}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                console.error('❌ Error:', error);
+                showResult(resultId, `❌ Xatolik: ${error.message}`, 'error');
+            }
+        }
+
+        // 4. Get Test Detail
+        async function getTestDetail() {
+            const resultId = 'detail-result';
+            const testId = document.getElementById('test-id').value;
+            showLoading(resultId);
+            
+            try {
+                console.log('🔍 Fetching test detail:', testId);
+                
+                const response = await fetch(`${BASE_URL}/tests/${testId}/`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                
+                console.log('📡 Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('📦 Test detail:', data);
+                    
+                    showResult(resultId, 
+                        `✅ Test tafsilotlari olindi!\n\n` +
+                        `${JSON.stringify(data, null, 2)}`,
+                        'success'
+                    );
+                } else {
+                    const errorText = await response.text();
+                    console.error('❌ Error response:', errorText);
+                    
+                    showResult(resultId, 
+                        `❌ Status: ${response.status}\n` +
+                        `Response: ${errorText}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                console.error('❌ Error:', error);
+                showResult(resultId, `❌ Xatolik: ${error.message}`, 'error');
+            }
+        }
+
+        // 4.5. Create Reading Section
+        async function createReading() {
+            const resultId = 'reading-result';
+            const testId = document.getElementById('reading-test-id').value;
+            showLoading(resultId);
+            
+            try {
+                const requestData = {
+                    test: testId,
+                    passages: [] // Backend requires passages field (empty array is OK)
+                };
+                
+                console.log('📤 Creating reading section with data:', requestData);
+                
+                const response = await fetch(`${BASE_URL}/reading/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData),
+                });
+                
+                console.log('📡 Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Reading section created:', data);
+                    
+                    showResult(resultId, 
+                        `✅ Reading section yaratildi!\n\n` +
+                        `${JSON.stringify(data, null, 2)}`,
+                        'success'
+                    );
+                } else {
+                    const errorText = await response.text();
+                    console.error('❌ Error response:', errorText);
+                    
+                    showResult(resultId, 
+                        `❌ Status: ${response.status}\n` +
+                        `Response: ${errorText}\n\n` +
+                        `To'g'ri format:\n` +
+                        `{\n  "test": integer,\n  "passages": []\n}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                console.error('❌ Error:', error);
+                showResult(resultId, `❌ Xatolik: ${error.message}`, 'error');
+            }
+        }
+
+        // 4.6. Create Listening Section
+        async function createListening() {
+            const resultId = 'listening-result';
+            const testId = document.getElementById('listening-test-id').value;
+            showLoading(resultId);
+            
+            try {
+                const requestData = {
+                    test: testId
+                };
+                
+                console.log('📤 Creating listening section with data:', requestData);
+                
+                // Backend uses /listening-create/ not /listening/
+                const response = await fetch(`${BASE_URL}/listening-create/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData),
+                });
+                
+                console.log('📡 Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Listening section created:', data);
+                    
+                    showResult(resultId, 
+                        `✅ Listening section yaratildi!\n\n` +
+                        `${JSON.stringify(data, null, 2)}`,
+                        'success'
+                    );
+                } else {
+                    const errorText = await response.text();
+                    console.error('❌ Error response:', errorText);
+                    
+                    showResult(resultId, 
+                        `❌ Status: ${response.status}\n` +
+                        `Response: ${errorText}\n\n` +
+                        `To'g'ri endpoint: /api/v1/listening-create/\n` +
+                        `Format: {\n  "test": integer\n}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                console.error('❌ Error:', error);
+                showResult(resultId, `❌ Xatolik: ${error.message}`, 'error');
+            }
+        }
+
+        // 5. Auth Test
+        async function testAuth() {
+            const resultId = 'auth-result';
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                showResult(resultId, '⚠️ Username va password kiriting!', 'error');
+                return;
+            }
+            
+            showLoading(resultId);
+            
+            try {
+                console.log('🔐 Testing authentication...');
+                
+                const response = await fetch('https://api.samariddin.space/api/token/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password }),
+                });
+                
+                console.log('📡 Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Auth successful:', data);
+                    
+                    showResult(resultId, 
+                        `✅ Autentifikatsiya muvaffaqiyatli!\n\n` +
+                        `Access token: ${data.access?.substring(0, 50)}...\n` +
+                        `Refresh token: ${data.refresh?.substring(0, 50)}...`,
+                        'success'
+                    );
+                } else {
+                    const errorText = await response.text();
+                    console.error('❌ Auth failed:', errorText);
+                    
+                    showResult(resultId, 
+                        `❌ Status: ${response.status}\n` +
+                        `Response: ${errorText}`,
+                        'error'
+                    );
+                }
+            } catch (error) {
+                console.error('❌ Error:', error);
+                showResult(resultId, `❌ Xatolik: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-run connection test on page load
+        window.addEventListener('load', () => {
+            console.log('🚀 Page loaded, running connection test...');
+            testConnection();
+        });
+    </script>
+</body>
+</html>
