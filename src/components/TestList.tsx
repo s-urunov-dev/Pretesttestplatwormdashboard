@@ -107,9 +107,9 @@ export function TestList({ tests, onDelete, onView, loading, error, offline }: T
       <div className="grid grid-cols-1 gap-6">
         {tests.map((test) => {
           // For now, mock the sections data
-          const hasReading = false; // Will be populated from API later
-          const hasListening = false; // Will be populated from API later
-          const hasWriting = false; // Will be populated from API later
+          const hasReading = !!test.reading;
+          const hasListening = !!test.listening;
+          const hasWriting = !!test.writing;
           const completedSections = [hasReading, hasListening, hasWriting].filter(Boolean).length;
 
           return (
@@ -128,13 +128,13 @@ export function TestList({ tests, onDelete, onView, loading, error, offline }: T
                       <h3 className="text-slate-900 mb-2">{test.name}</h3>
                       <div className="flex items-center gap-2 text-sm text-slate-500">
                         <Calendar className="w-4 h-4" />
-                        <span>
-                          Yaratilgan: {new Date(test.created_at).toLocaleDateString('uz-UZ', {
+                        <div>
+                          Yaratilgan: {test.created_at ? new Date(test.created_at).toLocaleDateString('uz-UZ', {
                             day: 'numeric',
                             month: 'long',
                             year: 'numeric'
-                          })}
-                        </span>
+                          }) : 'N/A'}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -165,10 +165,10 @@ export function TestList({ tests, onDelete, onView, loading, error, offline }: T
                 {/* Progress */}
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-slate-600">Bo&apos;limlar</span>
-                    <span className="text-sm text-slate-900">
+                    <div className="text-sm text-slate-600">Bo&apos;limlar</div>
+                    <div className="text-sm text-slate-900">
                       {completedSections}/3 to&apos;ldirildi
-                    </span>
+                    </div>
                   </div>
                   <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                     <div
@@ -196,15 +196,10 @@ export function TestList({ tests, onDelete, onView, loading, error, offline }: T
                       >
                         <BookOpen className={`w-4 h-4 ${hasReading ? 'text-white' : 'text-slate-500'}`} />
                       </div>
-                      <span className={`text-sm ${hasReading ? 'text-blue-900' : 'text-slate-500'}`}>
+                      <div className={`text-sm ${hasReading ? 'text-blue-900' : 'text-slate-500'}`}>
                         Reading
-                      </span>
+                      </div>
                     </div>
-                    {hasReading && (
-                      <p className="text-xs text-blue-700 line-clamp-1">
-                        {test.reading!.parts.length} passage
-                      </p>
-                    )}
                   </div>
 
                   {/* Listening */}
@@ -223,15 +218,10 @@ export function TestList({ tests, onDelete, onView, loading, error, offline }: T
                       >
                         <Headphones className={`w-4 h-4 ${hasListening ? 'text-white' : 'text-slate-500'}`} />
                       </div>
-                      <span className={`text-sm ${hasListening ? 'text-emerald-900' : 'text-slate-500'}`}>
+                      <div className={`text-sm ${hasListening ? 'text-emerald-900' : 'text-slate-500'}`}>
                         Listening
-                      </span>
+                      </div>
                     </div>
-                    {hasListening && (
-                      <p className="text-xs text-emerald-700 line-clamp-1">
-                        {test.listening!.parts.length} part
-                      </p>
-                    )}
                   </div>
 
                   {/* Writing */}
@@ -250,15 +240,10 @@ export function TestList({ tests, onDelete, onView, loading, error, offline }: T
                       >
                         <PenTool className={`w-4 h-4 ${hasWriting ? 'text-white' : 'text-slate-500'}`} />
                       </div>
-                      <span className={`text-sm ${hasWriting ? 'text-violet-900' : 'text-slate-500'}`}>
+                      <div className={`text-sm ${hasWriting ? 'text-violet-900' : 'text-slate-500'}`}>
                         Writing
-                      </span>
+                      </div>
                     </div>
-                    {hasWriting && (
-                      <p className="text-xs text-violet-700 line-clamp-1">
-                        {test.writing!.tasks.length} task
-                      </p>
-                    )}
                   </div>
                 </div>
               </div>

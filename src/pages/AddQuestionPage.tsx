@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { BookOpen, Headphones, PenTool, ChevronLeft, Plus, Save, Loader2 } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { BookOpen, Headphones, PenTool, ChevronLeft, Save, Loader2 } from 'lucide-react';
 import {
   getReadingQuestionTypes,
   createReadingPassage,
@@ -8,20 +9,20 @@ import {
   QuestionGroup,
   PassageType,
   GAP_FILLING_CRITERIA,
+  getTestDetail,
 } from '../lib/api';
-
-interface NewAddQuestionPageProps {
-  testId: number;
-  testName: string;
-  readingId?: number;
-  listeningId?: number;
-  onBack: () => void;
-}
 
 type SectionType = 'reading' | 'listening' | 'writing';
 type SubType = 'passage1' | 'passage2' | 'passage3' | 'part_1' | 'part_2' | 'part_3' | 'part_4' | 'task1' | 'task2';
 
-export function NewAddQuestionPage({ testId, testName, readingId, listeningId, onBack }: NewAddQuestionPageProps) {
+export function AddQuestionPage() {
+  const { testId } = useParams<{ testId: string }>();
+  const navigate = useNavigate();
+  
+  const [testName, setTestName] = useState('');
+  const [readingId, setReadingId] = useState<number | undefined>();
+  const [listeningId, setListeningId] = useState<number | undefined>();
+  
   const [selectedSection, setSelectedSection] = useState<SectionType>('reading');
   const [selectedSubType, setSelectedSubType] = useState<SubType>('passage1');
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([]);
@@ -33,29 +34,46 @@ export function NewAddQuestionPage({ testId, testName, readingId, listeningId, o
   const [body, setBody] = useState('');
   const [groups, setGroups] = useState<QuestionGroup[]>([]);
 
-  // Load question types on mount
+  // Load test details and question types on mount
   useEffect(() => {
-    loadQuestionTypes();
-  }, []);
-
-  const loadQuestionTypes = async () => {
-    setLoading(true);
-    try {
-      const types = await getReadingQuestionTypes();
-      setQuestionTypes(types);
-    } catch (error) {
-      console.error('Error loading question types:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (!testId) return;
+    
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [testDetail, types] = await Promise.all([
+          getTestDetail(parseInt(testId)),
+          getReadingQuestionTypes(),
+        ]);
+        
+        setTestName(testDetail.name);
+        setReadingId(
+          typeof testDetail.reading === 'object' && testDetail.reading !== null 
+            ? testDetail.reading.id 
+            : testDetail.reading
+        );
+        setListeningId(
+          typeof testDetail.listening === 'object' && testDetail.listening !== null 
+            ? testDetail.listening.id 
+            : testDetail.listening
+        );
+        setQuestionTypes(types);
+      } catch (error) {
+        console.error('Error loading data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, [testId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addQuestionGroup = (questionType: QuestionType) => {
     const lastGroup = groups[groups.length - 1];
     const fromValue = lastGroup ? lastGroup.to_value + 1 : 1;
     
     const newGroup: QuestionGroup = {
-      question_type: questionType.type, // Use type name instead of id
+      question_type: questionType.type,
       from_value: fromValue,
       to_value: fromValue,
     };
@@ -106,6 +124,9 @@ export function NewAddQuestionPage({ testId, testName, readingId, listeningId, o
       setTitle('');
       setBody('');
       setGroups([]);
+      
+      // Navigate back to test detail
+      navigate(`/test/${testId}`);
     } catch (error) {
       console.error('Error saving passage:', error);
       alert(`Xatolik: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -158,7 +179,7 @@ export function NewAddQuestionPage({ testId, testName, readingId, listeningId, o
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
         <div className="p-6 border-b border-slate-200">
           <button
-            onClick={onBack}
+            onClick={() => navigate(`/test/${testId}`)}
             className="flex items-center gap-2 text-slate-600 hover:text-[#042d62] transition-colors mb-4"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -388,7 +409,7 @@ export function NewAddQuestionPage({ testId, testName, readingId, listeningId, o
                                     gap_filling: {
                                       ...group.gap_filling,
                                       title: e.target.value,
-                                      criteria: group.gap_filling?.criteria || 'ONE_WORD',
+                                      criteria: group.gap_filling?.criteria || 'NMT_TWO',
                                       body: group.gap_filling?.body || '',
                                     }
                                   })}
@@ -427,7 +448,7 @@ export function NewAddQuestionPage({ testId, testName, readingId, listeningId, o
                                     gap_filling: {
                                       ...group.gap_filling,
                                       title: group.gap_filling?.title || '',
-                                      criteria: group.gap_filling?.criteria || 'ONE_WORD',
+                                      criteria: group.gap_filling?.criteria || 'NMT_TWO',
                                       body: e.target.value,
                                     }
                                   })}

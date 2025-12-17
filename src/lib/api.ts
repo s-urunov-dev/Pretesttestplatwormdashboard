@@ -120,9 +120,20 @@ export interface TestDetail {
   id: number;
   name: string;
   is_active: boolean;
-  reading: ReadingSection;
-  listening: ListeningSection;
-  writing: WritingSection;
+  created_at: string;
+  updated_at: string;
+  reading: number | null;
+  listening: number | null;
+  writing: number | null;
+  reading_passage1_completed: boolean;
+  reading_passage2_completed: boolean;
+  reading_passage3_completed: boolean;
+  listening_part1_completed: boolean;
+  listening_part2_completed: boolean;
+  listening_part3_completed: boolean;
+  listening_part4_completed: boolean;
+  writing_task1_completed: boolean;
+  writing_task2_completed: boolean;
 }
 
 export interface TestResponse {
