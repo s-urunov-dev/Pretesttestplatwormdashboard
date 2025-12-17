@@ -40,6 +40,10 @@ export function HomePage() {
     navigate(`/test/${testId}`);
   };
 
+  const handleNavigateToEdit = (testId: number) => {
+    navigate(`/test/${testId}/add-question?mode=edit`);
+  };
+
   const handleCreateTest = () => {
     setShowCreateModal(true);
   };
@@ -64,6 +68,7 @@ export function HomePage() {
         offline={offline}
         onNavigateToAdd={handleCreateTest}
         onNavigateToDetail={handleNavigateToDetail}
+        onNavigateToEdit={handleNavigateToEdit}
         onDeleteTest={handleDeleteTest}
       />
 

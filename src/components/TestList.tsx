@@ -1,4 +1,4 @@
-import { BookOpen, Headphones, PenTool, Trash2, Eye, Calendar, FileText, AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
+import { BookOpen, Headphones, PenTool, Trash2, Eye, Calendar, FileText, AlertCircle, RefreshCw, WifiOff, Edit } from 'lucide-react';
 import { TestResponse } from '../lib/api';
 
 export interface Test {
@@ -24,12 +24,13 @@ interface TestListProps {
   tests: TestResponse[];
   onDelete: (id: number) => void;
   onView: (id: number) => void;
+  onEdit?: (id: number) => void;
   loading?: boolean;
   error?: string | null;
   offline?: boolean;
 }
 
-export function TestList({ tests, onDelete, onView, loading, error, offline }: TestListProps) {
+export function TestList({ tests, onDelete, onView, onEdit, loading, error, offline }: TestListProps) {
   if (offline) {
     return (
       <>
@@ -148,6 +149,15 @@ export function TestList({ tests, onDelete, onView, loading, error, offline }: T
                       <Eye className="w-4 h-4" />
                       Ko&apos;rish
                     </button>
+                    {onEdit && (
+                      <button
+                        onClick={() => onEdit(test.id)}
+                        className="p-2 hover:bg-blue-50 rounded-xl transition-colors"
+                        title="Tahrirlash"
+                      >
+                        <Edit className="w-5 h-5 text-blue-500" />
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         if (confirm('Testni o\'chirmoqchimisiz?')) {

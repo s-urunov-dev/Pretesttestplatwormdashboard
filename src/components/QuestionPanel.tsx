@@ -38,12 +38,13 @@ interface QuestionPanelProps {
   loading: boolean;
   onNavigateToAdd: () => void;
   onNavigateToDetail?: (testId: number) => void;
+  onNavigateToEdit?: (testId: number) => void;
   onDeleteTest: (testId: number) => void;
   error?: string | null;
   offline?: boolean;
 }
 
-export function QuestionPanel({ tests, loading, onNavigateToAdd, onNavigateToDetail, onDeleteTest, error, offline }: QuestionPanelProps) {
+export function QuestionPanel({ tests, loading, onNavigateToAdd, onNavigateToDetail, onNavigateToEdit, onDeleteTest, error, offline }: QuestionPanelProps) {
   const handleDeleteTest = (id: number) => {
     onDeleteTest(id);
   };
@@ -51,6 +52,12 @@ export function QuestionPanel({ tests, loading, onNavigateToAdd, onNavigateToDet
   const handleViewTest = (id: number) => {
     if (onNavigateToDetail) {
       onNavigateToDetail(id);
+    }
+  };
+
+  const handleEditTest = (id: number) => {
+    if (onNavigateToEdit) {
+      onNavigateToEdit(id);
     }
   };
 
@@ -142,6 +149,7 @@ export function QuestionPanel({ tests, loading, onNavigateToAdd, onNavigateToDet
         tests={tests}
         onDelete={handleDeleteTest}
         onView={handleViewTest}
+        onEdit={handleEditTest}
         loading={loading}
         error={error}
         offline={offline}

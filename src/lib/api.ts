@@ -561,6 +561,38 @@ export async function getReadingQuestionTypes(): Promise<QuestionType[]> {
   }
 }
 
+// Get reading passages for a reading section
+export async function getReadingPassages(readingId: number): Promise<any> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    throw new Error('Passages not available in offline mode');
+  }
+
+  try {
+    console.log('🔄 Fetching reading passages for reading:', readingId);
+    
+    const response = await fetch(`${BASE_URL}/readings/${readingId}/passages/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch passages: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Passages loaded:', data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching passages:', error);
+    throw error;
+  }
+}
+
 // Create a reading passage with questions
 export async function createReadingPassage(data: CreateReadingPassageRequest): Promise<void> {
   const apiAvailable = await checkAPIAvailability();

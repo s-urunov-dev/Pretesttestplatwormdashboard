@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, Headphones, PenTool, ChevronLeft, Save, Loader2 } from 'lucide-react';
 import {
   getReadingQuestionTypes,
   createReadingPassage,
+  getReadingPassages,
   QuestionType,
   CreateReadingPassageRequest,
   QuestionGroup,
   PassageType,
   GAP_FILLING_CRITERIA,
   getTestDetail,
+  CriteriaType,
+  VariantType,
 } from '../lib/api';
 
 type SectionType = 'reading' | 'listening' | 'writing';
@@ -18,6 +21,8 @@ type SubType = 'passage1' | 'passage2' | 'passage3' | 'part_1' | 'part_2' | 'par
 export function AddQuestionPage() {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isEditMode = searchParams.get('mode') === 'edit';
   
   const [testName, setTestName] = useState('');
   const [readingId, setReadingId] = useState<number | undefined>();
@@ -28,11 +33,13 @@ export function AddQuestionPage() {
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingPassages, setLoadingPassages] = useState(false);
   
   // Form state
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [groups, setGroups] = useState<QuestionGroup[]>([]);
+  const [passages, setPassages] = useState<any[]>([]);
 
   // Load test details and question types on mount
   useEffect(() => {
@@ -67,6 +74,122 @@ export function AddQuestionPage() {
     
     loadData();
   }, [testId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load passages when reading section is selected and readingId is available
+  useEffect(() => {
+    if (selectedSection === 'reading' && readingId) {
+      loadPassages();
+    }
+  }, [readingId, selectedSection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load existing passage data when sub type changes
+  useEffect(() => {
+    console.log('🎯 useEffect triggered for loadPassageData');
+    console.log('🎯 selectedSection:', selectedSection);
+    console.log('🎯 passages.length:', passages.length);
+    console.log('🎯 passages:', passages);
+    
+    if (selectedSection === 'reading' && passages.length > 0) {
+      console.log('✅ Calling loadPassageData...');
+      loadPassageData();
+    } else {
+      console.log('❌ Not calling loadPassageData - conditions not met');
+    }
+  }, [selectedSubType, passages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadPassages = async () => {
+    if (!readingId) return;
+    
+    try {
+      setLoadingPassages(true);
+      const response = await getReadingPassages(readingId);
+      console.log('📦 Passages response:', response);
+      console.log('📦 Passages results:', response.results);
+      setPassages(response.results || []);
+    } catch (error) {
+      console.error('Error loading passages:', error);
+    } finally {
+      setLoadingPassages(false);
+    }
+  };
+
+  const loadPassageData = () => {
+    console.log('🔍 loadPassageData called');
+    console.log('🔍 selectedSubType:', selectedSubType);
+    console.log('🔍 passages:', passages);
+    
+    // Find passage matching current sub type
+    const currentPassage = passages.find(
+      (p) => p.passage_type === selectedSubType
+    );
+
+    console.log('🔍 currentPassage:', currentPassage);
+
+    if (currentPassage) {
+      console.log('📄 Loading passage data:', currentPassage);
+      console.log('📄 Groups in passage:', currentPassage.groups);
+      
+      // Load title and body
+      setTitle(currentPassage.title || '');
+      setBody(currentPassage.body || '');
+
+      // Convert backend groups to frontend format
+      const convertedGroups: QuestionGroup[] = (currentPassage.groups || []).map((group: any) => {
+        console.log('🔄 Converting group:', group);
+        
+        const baseGroup: QuestionGroup = {
+          question_type: group.reading_question_type?.type || '',
+          from_value: group.from_value || 1,
+          to_value: group.to_value || 1,
+        };
+
+        // Handle gap_containers (gap_filling)
+        if (group.gap_containers && group.gap_containers.length > 0) {
+          const gapData = group.gap_containers[0];
+          console.log('📝 Gap filling data:', gapData);
+          baseGroup.gap_filling = {
+            title: gapData.title || '',
+            criteria: gapData.criteria as CriteriaType || 'NMT_TWO',
+            body: gapData.body || '',
+          };
+        }
+
+        // Handle identify_info
+        if (group.identify_info && group.identify_info.length > 0) {
+          const identifyData = group.identify_info[0];
+          console.log('✅ Identify info data:', identifyData);
+          baseGroup.identify_info = {
+            title: identifyData.title || '',
+            question: identifyData.question || [],
+          };
+        }
+
+        // Handle matching
+        if (group.matching && group.matching.length > 0) {
+          const matchingData = group.matching[0];
+          console.log('🔗 Matching data:', matchingData);
+          baseGroup.matching_item = {
+            title: matchingData.title || '',
+            statement: matchingData.statement || [],
+            option: matchingData.option || [],
+            variant_type: matchingData.variant_type as VariantType || 'alphabet',
+            answer_count: matchingData.answer_count || 1,
+          };
+        }
+
+        console.log('✨ Converted group:', baseGroup);
+        return baseGroup;
+      });
+
+      console.log('🎯 All converted groups:', convertedGroups);
+      setGroups(convertedGroups);
+    } else {
+      // No existing data, reset form
+      setTitle('');
+      setBody('');
+      setGroups([]);
+    }
+  };
 
   const addQuestionGroup = (questionType: QuestionType) => {
     const lastGroup = groups[groups.length - 1];
