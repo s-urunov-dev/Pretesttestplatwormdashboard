@@ -5,7 +5,8 @@ import {
   GAP_FILLING_CRITERIA, 
   createReadingPassage, 
   createReading,
-  PassageType 
+  PassageType,
+  CriteriaType 
 } from '../lib/api';
 
 interface ReadingQuestionFormProps {
@@ -378,7 +379,7 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                             onChange={(e) => updateQuestionGroup(index, {
                               gap_filling: {
                                 title: group.gap_filling?.title || '',
-                                criteria: e.target.value as any,
+                                criteria: e.target.value as CriteriaType,
                                 body: group.gap_filling?.body || '',
                               }
                             })}
@@ -387,7 +388,7 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                           >
                             <option value="">Tanlang...</option>
                             {Object.entries(GAP_FILLING_CRITERIA).map(([key, { value, label }]) => (
-                              <option key={key} value={value}>
+                              <option key={value} value={value}>
                                 {label}
                               </option>
                             ))}
