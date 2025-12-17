@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { ArrowLeft, BookOpen, Headphones, PenTool, ChevronLeft, ChevronRight, FileText, Check } from 'lucide-react';
+import { ReadingQuestionForm } from './ReadingQuestionForm';
 import { AllQuestionTypesForm } from './AllQuestionTypesForm';
 
 interface AddQuestionPageProps {
+  testId?: number;
   onNavigateBack: () => void;
 }
 
@@ -12,7 +14,7 @@ interface TestSection {
   isCompleted: boolean;
 }
 
-export function AddQuestionPage({ onNavigateBack }: AddQuestionPageProps) {
+export function AddQuestionPage({ testId, onNavigateBack }: AddQuestionPageProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeSection, setActiveSection] = useState<'reading' | 'listening' | 'writing'>('reading');
   
@@ -233,16 +235,28 @@ export function AddQuestionPage({ onNavigateBack }: AddQuestionPageProps) {
             </div>
 
             {/* Question Form */}
-            <AllQuestionTypesForm
-              selectedType={activeSection}
-              selectedSection={currentSection.selectedPart}
-              onSubmit={(question) => {
-                console.log('Section saved:', question);
-                handleSectionComplete();
-              }}
-              onBack={onNavigateBack}
-              allSectionsComplete={allSectionsComplete}
-            />
+            {activeSection === 'reading' ? (
+              <ReadingQuestionForm
+                testId={testId}
+                passageNumber={parseInt(currentSection.selectedPart.split('-')[1])}
+                onSubmit={() => {
+                  console.log('Reading section saved');
+                  handleSectionComplete();
+                }}
+                onBack={onNavigateBack}
+              />
+            ) : (
+              <AllQuestionTypesForm
+                selectedType={activeSection}
+                selectedSection={currentSection.selectedPart}
+                onSubmit={(question) => {
+                  console.log('Section saved:', question);
+                  handleSectionComplete();
+                }}
+                onBack={onNavigateBack}
+                allSectionsComplete={allSectionsComplete}
+              />
+            )}
           </div>
         </div>
       </div>

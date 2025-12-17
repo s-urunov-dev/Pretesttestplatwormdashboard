@@ -37,7 +37,7 @@ export type PassageType = 'passage1' | 'passage2' | 'passage3';
 export type PartType = 'part_1' | 'part_2' | 'part_3' | 'part_4';
 export type WritingType = 'task1' | 'task2';
 export type VariantType = 'romain' | 'alphabet' | 'numeric';
-export type CriteriaType = 'ONE_WORD' | 'TWO_WORDS' | 'THREE_WORDS' | 'NO_MORE_THREE_WORDS';
+export type CriteriaType = 'ONE_WORD' | 'ONE_WORD_OR_NUMBER' | 'NMT_ONE' | 'NMT_TWO' | 'NMT_THREE' | 'NMT_TWO_NUM' | 'NMT_THREE_NUM' | 'NUMBER_ONLY' | 'FROM_BOX';
 
 // Question Types from backend
 export interface QuestionType {
@@ -678,3 +678,34 @@ export interface ListeningResponse {
 export interface CreateSectionRequest {
   test: number;
 }
+
+// Listening Part Create Request
+export interface CreateListeningPartRequest {
+  audio: File;
+  part_type: PartType;
+  listening: number;
+  question_type: number[];
+}
+
+// Listening Question Group Create Request
+export interface CreateListeningQuestionGroupRequest {
+  question_type: string;
+  from_value: number;
+  to_value: number;
+  gap_filling?: GapFillingData;
+  identify_info?: IdentifyInfoData;
+  matching_item?: MatchingItemData;
+}
+
+// Gap Filling Criteria constants
+export const GAP_FILLING_CRITERIA = {
+  ONE_WORD: { value: 'ONE_WORD', label: 'One word only' },
+  ONE_WORD_OR_NUMBER: { value: 'ONE_WORD_OR_NUMBER', label: 'One word and/or a number' },
+  NMT_ONE: { value: 'NMT_ONE', label: 'No more than one word' },
+  NMT_TWO: { value: 'NMT_TWO', label: 'No more than two words' },
+  NMT_THREE: { value: 'NMT_THREE', label: 'No more than three words' },
+  NMT_TWO_NUM: { value: 'NMT_TWO_NUM', label: 'No more than two words and/or a number' },
+  NMT_THREE_NUM: { value: 'NMT_THREE_NUM', label: 'No more than three words and/or a number' },
+  NUMBER_ONLY: { value: 'NUMBER_ONLY', label: 'A number' },
+  FROM_BOX: { value: 'FROM_BOX', label: 'Choose from the box' },
+} as const;
