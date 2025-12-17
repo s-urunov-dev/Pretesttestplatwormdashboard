@@ -55,7 +55,7 @@ export function NewAddQuestionPage({ testId, testName, readingId, listeningId, o
     const fromValue = lastGroup ? lastGroup.to_value + 1 : 1;
     
     const newGroup: QuestionGroup = {
-      question_type: questionType.id.toString(),
+      question_type: questionType.type, // Use type name instead of id
       from_value: fromValue,
       to_value: fromValue,
     };
@@ -330,8 +330,8 @@ export function NewAddQuestionPage({ testId, testName, readingId, listeningId, o
                   
                   <div className="space-y-6">
                     {groups.map((group, index) => {
-                      const qType = questionTypes.find(qt => qt.id.toString() === group.question_type);
-                      const questionTypeName = qType?.type || '';
+                      const qType = questionTypes.find(qt => qt.type === group.question_type);
+                      const questionTypeName = qType?.type || group.question_type;
                       
                       // Determine which fields to show based on question type
                       const isGapFilling = ['sentence_completion', 'summary_completion', 'table_completion', 'flowchart_completion', 'diagram_labeling', 'short_answer'].includes(questionTypeName);
