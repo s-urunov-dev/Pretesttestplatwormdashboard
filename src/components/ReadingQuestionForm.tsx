@@ -23,6 +23,10 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
   const [expandedGroups, setExpandedGroups] = useState<string[]>(['0']);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Log criteria to debug
+  console.log('GAP_FILLING_CRITERIA:', GAP_FILLING_CRITERIA);
+  console.log('Number of criteria:', Object.keys(GAP_FILLING_CRITERIA).length);
+
   // Reading question types mapping
   const readingQuestionTypes = [
     { value: 'multiple_choice', label: 'Multiple Choice' },
@@ -102,14 +106,19 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
       // Determine passage type
       const passageType: PassageType = `passage${passageNumber}` as PassageType;
 
-      // Create reading passage with question groups
-      await createReadingPassage({
+      // Prepare the data payload
+      const payload = {
         reading: readingSection.id,
         passage_type: passageType,
         title: title,
         body: passageText,
         groups: questionGroups,
-      });
+      };
+
+      console.log('📤 Sending reading passage data:', JSON.stringify(payload, null, 2));
+
+      // Create reading passage with question groups
+      await createReadingPassage(payload);
 
       alert('Reading passage muvaffaqiyatli yaratildi!');
       onSubmit?.();
@@ -376,22 +385,35 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                           </label>
                           <select
                             value={group.gap_filling?.criteria || ''}
-                            onChange={(e) => updateQuestionGroup(index, {
-                              gap_filling: {
-                                title: group.gap_filling?.title || '',
-                                criteria: e.target.value as CriteriaType,
-                                body: group.gap_filling?.body || '',
-                              }
-                            })}
+                            onChange={(e) => {
+                              console.log('Selected criteria:', e.target.value);
+                              updateQuestionGroup(index, {
+                                gap_filling: {
+                                  title: group.gap_filling?.title || '',
+                                  criteria: e.target.value as CriteriaType,
+                                  body: group.gap_filling?.body || '',
+                                }
+                              });
+                            }}
                             className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
                             required
                           >
                             <option value="">Tanlang...</option>
-                            {Object.entries(GAP_FILLING_CRITERIA).map(([key, { value, label }]) => (
-                              <option key={value} value={value}>
-                                {label}
-                              </option>
-                            ))}
+                            {(() => {
+                              console.log('Rendering criteria options...');
+                              console.log('GAP_FILLING_CRITERIA:', GAP_FILLING_CRITERIA);
+                              const entries = Object.entries(GAP_FILLING_CRITERIA);
+                              console.log('Number of entries:', entries.length);
+                              console.log('Entries:', entries);
+                              return entries.map(([key, { value, label }]) => {
+                                console.log(`Creating option: ${key} = ${value} (${label})`);
+                                return (
+                                  <option key={value} value={value}>
+                                    {label}
+                                  </option>
+                                );
+                              });
+                            })()}
                           </select>
                         </div>
 

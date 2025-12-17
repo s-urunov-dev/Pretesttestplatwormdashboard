@@ -7,6 +7,7 @@ import {
   CreateReadingPassageRequest,
   QuestionGroup,
   PassageType,
+  GAP_FILLING_CRITERIA,
 } from '../lib/api';
 
 interface NewAddQuestionPageProps {
@@ -399,7 +400,7 @@ export function NewAddQuestionPage({ testId, testName, readingId, listeningId, o
                               <div>
                                 <label className="block text-sm text-slate-700 mb-2">So'z Cheklovi</label>
                                 <select
-                                  value={group.gap_filling?.criteria || 'ONE_WORD'}
+                                  value={group.gap_filling?.criteria || 'NMT_TWO'}
                                   onChange={(e) => updateGroup(index, {
                                     gap_filling: {
                                       ...group.gap_filling,
@@ -410,10 +411,11 @@ export function NewAddQuestionPage({ testId, testName, readingId, listeningId, o
                                   })}
                                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
                                 >
-                                  <option value="ONE_WORD">Bitta so'z</option>
-                                  <option value="TWO_WORDS">Ikki so'z</option>
-                                  <option value="THREE_WORDS">Uch so'z</option>
-                                  <option value="NO_MORE_THREE_WORDS">3 tadan ko'p bo'lmagan so'z</option>
+                                  {Object.entries(GAP_FILLING_CRITERIA).map(([key, { value, label }]) => (
+                                    <option key={value} value={value}>
+                                      {label}
+                                    </option>
+                                  ))}
                                 </select>
                               </div>
 

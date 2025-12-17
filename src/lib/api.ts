@@ -708,4 +708,4 @@ export const GAP_FILLING_CRITERIA = {
   NMT_THREE_NUM: { value: 'NMT_THREE_NUM', label: 'No more than three words and/or a number' },
   NUMBER_ONLY: { value: 'NUMBER_ONLY', label: 'A number' },
   FROM_BOX: { value: 'FROM_BOX', label: 'Choose from the box' },
-} as const;
+};
