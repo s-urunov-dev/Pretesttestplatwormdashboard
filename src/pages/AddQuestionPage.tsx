@@ -153,7 +153,7 @@ export function AddQuestionPage() {
           const container = group.gap_containers[0];
           convertedGroup.gap_filling = {
             title: container.title,
-            criteria: container.criteria,
+            principle: container.principle || container.criteria, // Support both old and new field names
             body: container.body,
           };
         }
@@ -540,7 +540,7 @@ export function AddQuestionPage() {
                                     gap_filling: {
                                       ...group.gap_filling,
                                       title: e.target.value,
-                                      criteria: group.gap_filling?.criteria || 'NMT_TWO',
+                                      principle: group.gap_filling?.principle || 'NMT_TWO',
                                       body: group.gap_filling?.body || '',
                                     }
                                   })}
@@ -552,12 +552,12 @@ export function AddQuestionPage() {
                               <div>
                                 <label className="block text-sm text-slate-700 mb-2">So'z Cheklovi</label>
                                 <select
-                                  value={group.gap_filling?.criteria || 'NMT_TWO'}
+                                  value={group.gap_filling?.principle || 'NMT_TWO'}
                                   onChange={(e) => updateGroup(index, {
                                     gap_filling: {
                                       ...group.gap_filling,
                                       title: group.gap_filling?.title || '',
-                                      criteria: e.target.value as any,
+                                      principle: e.target.value as any,
                                       body: group.gap_filling?.body || '',
                                     }
                                   })}
@@ -579,7 +579,7 @@ export function AddQuestionPage() {
                                     gap_filling: {
                                       ...group.gap_filling,
                                       title: group.gap_filling?.title || '',
-                                      criteria: group.gap_filling?.criteria || 'NMT_TWO',
+                                      principle: group.gap_filling?.principle || 'NMT_TWO',
                                       body: e.target.value,
                                     }
                                   })}

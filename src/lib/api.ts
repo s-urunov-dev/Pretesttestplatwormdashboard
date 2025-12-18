@@ -48,7 +48,7 @@ export interface QuestionType {
 // Question Group structures
 export interface GapFillingData {
   title: string;
-  criteria: CriteriaType;
+  principle: CriteriaType;
   body: string;
 }
 
