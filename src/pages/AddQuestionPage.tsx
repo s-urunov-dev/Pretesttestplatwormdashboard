@@ -134,60 +134,61 @@ export function AddQuestionPage() {
       setBody(currentPassage.body || '');
 
       // Convert backend groups to frontend format
-      const convertedGroups: QuestionGroup[] = (currentPassage.groups || []).map((group: any) => {
+      const convertedGroups: QuestionGroup[] = currentPassage.groups.map((group: any) => {
         console.log('🔄 Converting group:', group);
         
-        const baseGroup: QuestionGroup = {
-          question_type: group.reading_question_type?.type || '',
-          from_value: group.from_value || 1,
-          to_value: group.to_value || 1,
+        // Backend returns reading_question_type as string, not object
+        const questionType = typeof group.reading_question_type === 'string' 
+          ? group.reading_question_type 
+          : group.reading_question_type?.type;
+        
+        const convertedGroup: QuestionGroup = {
+          question_type: questionType,
+          from_value: group.from_value,
+          to_value: group.to_value,
         };
 
-        // Handle gap_containers (gap_filling)
+        // Convert gap_containers[0] to gap_filling
         if (group.gap_containers && group.gap_containers.length > 0) {
-          const gapData = group.gap_containers[0];
-          console.log('📝 Gap filling data:', gapData);
-          baseGroup.gap_filling = {
-            title: gapData.title || '',
-            criteria: gapData.criteria as CriteriaType || 'NMT_TWO',
-            body: gapData.body || '',
+          const container = group.gap_containers[0];
+          convertedGroup.gap_filling = {
+            title: container.title,
+            criteria: container.criteria,
+            body: container.body,
           };
         }
 
-        // Handle identify_info
+        // Convert identify_info[0] to identify_info
         if (group.identify_info && group.identify_info.length > 0) {
-          const identifyData = group.identify_info[0];
-          console.log('✅ Identify info data:', identifyData);
-          baseGroup.identify_info = {
-            title: identifyData.title || '',
-            question: identifyData.question || [],
+          const info = group.identify_info[0];
+          convertedGroup.identify_info = {
+            title: info.title,
+            question: info.question,
           };
         }
 
-        // Handle matching
+        // Convert matching[0] to matching_item
         if (group.matching && group.matching.length > 0) {
-          const matchingData = group.matching[0];
-          console.log('🔗 Matching data:', matchingData);
-          baseGroup.matching_item = {
-            title: matchingData.title || '',
-            statement: matchingData.statement || [],
-            option: matchingData.option || [],
-            variant_type: matchingData.variant_type as VariantType || 'alphabet',
-            answer_count: matchingData.answer_count || 1,
+          const match = group.matching[0];
+          convertedGroup.matching_item = {
+            title: match.title,
+            statement: match.statement,
+            option: match.option,
+            variant_type: match.variant_type,
+            answer_count: match.answer_count,
           };
         }
 
-        console.log('✨ Converted group:', baseGroup);
-        return baseGroup;
+        console.log('✨ Converted group:', convertedGroup);
+        return convertedGroup;
       });
 
       console.log('🎯 All converted groups:', convertedGroups);
       setGroups(convertedGroups);
+      
+      console.log('✅ Groups state updated. Current groups length:', convertedGroups.length);
     } else {
-      // No existing data, reset form
-      setTitle('');
-      setBody('');
-      setGroups([]);
+      console.log('❌ No passage found for selectedSubType:', selectedSubType);
     }
   };
 
@@ -452,15 +453,16 @@ export function AddQuestionPage() {
                     <Loader2 className="w-8 h-8 animate-spin text-[#042d62]" />
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-wrap gap-2">
                     {questionTypes.map((qType) => (
                       <button
                         key={qType.id}
                         onClick={() => addQuestionGroup(qType)}
-                        className="flex flex-col items-start p-4 border-2 border-slate-200 rounded-xl hover:border-[#042d62] hover:bg-slate-50 transition-all text-left"
+                        className="group relative px-4 py-2 border border-slate-200 rounded-lg hover:border-[#042d62] hover:bg-[#042d62] hover:text-white transition-all text-sm"
+                        title={getQuestionTypeDescription(qType.type)}
                       >
-                        <span className="text-slate-900">{qType.id}. {getQuestionTypeLabel(qType.type)}</span>
-                        <span className="text-sm text-slate-600 mt-1">{getQuestionTypeDescription(qType.type)}</span>
+                        <span className="text-slate-400 group-hover:text-white/70 transition-colors">{qType.id}.</span>{' '}
+                        <span className="text-slate-700 group-hover:text-white transition-colors">{getQuestionTypeLabel(qType.type)}</span>
                       </button>
                     ))}
                   </div>

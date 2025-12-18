@@ -138,10 +138,15 @@ export interface TestDetail {
 
 export interface TestResponse {
   id: number;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
   name: string;
   is_active: boolean;
+  reading?: {
+    id: number;
+  };
+  listening?: any;
+  writing?: any[];
 }
 
 export interface CreateTestRequest {
@@ -572,7 +577,8 @@ export async function getReadingPassages(readingId: number): Promise<any> {
   try {
     console.log('🔄 Fetching reading passages for reading:', readingId);
     
-    const response = await fetch(`${BASE_URL}/readings/${readingId}/passages/`, {
+    // Try with expand parameter to get full groups data
+    const response = await fetch(`${BASE_URL}/readings/${readingId}/passages/?expand=groups`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
