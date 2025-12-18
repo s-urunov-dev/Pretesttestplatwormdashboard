@@ -189,6 +189,12 @@ export function AddQuestionPage() {
       console.log('✅ Groups state updated. Current groups length:', convertedGroups.length);
     } else {
       console.log('❌ No passage found for selectedSubType:', selectedSubType);
+      console.log('🧹 Clearing form fields...');
+      
+      // Clear form if passage doesn't exist
+      setTitle('');
+      setBody('');
+      setGroups([]);
     }
   };
 
