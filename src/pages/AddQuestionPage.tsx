@@ -14,9 +14,10 @@ import {
   CriteriaType,
   VariantType,
 } from '../lib/api';
+import { BulkReadingForm } from '../components/BulkReadingForm';
 
 type SectionType = 'reading' | 'listening' | 'writing';
-type SubType = 'passage1' | 'passage2' | 'passage3' | 'part_1' | 'part_2' | 'part_3' | 'part_4' | 'task1' | 'task2';
+type SubType = 'passage1' | 'passage2' | 'passage3' | 'part_1' | 'part_2' | 'part_3' | 'part_4' | 'task1' | 'task2' | 'bulk_passages';
 
 export function AddQuestionPage() {
   const { testId } = useParams<{ testId: string }>();
@@ -365,7 +366,7 @@ export function AddQuestionPage() {
           <div className="flex items-center gap-4">
             {selectedSection === 'reading' && (
               <>
-                {(['passage1', 'passage2', 'passage3'] as const).map((type) => (
+                {(['passage1', 'passage2', 'passage3', 'bulk_passages'] as const).map((type) => (
                   <button
                     key={type}
                     onClick={() => setSelectedSubType(type)}
@@ -375,7 +376,7 @@ export function AddQuestionPage() {
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
-                    Passage {type.slice(-1)}
+                    {type === 'bulk_passages' ? 'Bulk Passages' : `Passage ${type.slice(-1)}`}
                   </button>
                 ))}
               </>
@@ -421,7 +422,15 @@ export function AddQuestionPage() {
 
         {/* Content Area */}
         <main className="flex-1 overflow-y-auto p-8">
-          {selectedSection === 'reading' && (
+          {selectedSection === 'reading' && selectedSubType === 'bulk_passages' && (
+            <BulkReadingForm
+              testId={testId ? parseInt(testId) : undefined}
+              onSubmit={() => navigate(`/test/${testId}`)}
+              onBack={() => navigate(`/test/${testId}`)}
+            />
+          )}
+
+          {selectedSection === 'reading' && selectedSubType !== 'bulk_passages' && (
             <div className="max-w-5xl mx-auto space-y-8">
               {/* Passage Title & Body */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
@@ -642,7 +651,7 @@ export function AddQuestionPage() {
                                       title: e.target.value,
                                       statement: group.matching_item?.statement || [''],
                                       option: group.matching_item?.option || [''],
-                                      variant_type: group.matching_item?.variant_type || 'alphabet',
+                                      variant_type: group.matching_item?.variant_type || 'letter',
                                       answer_count: group.matching_item?.answer_count || 1,
                                     }
                                   })}
@@ -662,7 +671,7 @@ export function AddQuestionPage() {
                                         title: group.matching_item?.title || '',
                                         statement: e.target.value.split('\n').filter(s => s.trim()),
                                         option: group.matching_item?.option || [''],
-                                        variant_type: group.matching_item?.variant_type || 'alphabet',
+                                        variant_type: group.matching_item?.variant_type || 'letter',
                                         answer_count: group.matching_item?.answer_count || 1,
                                       }
                                     })}
@@ -682,7 +691,7 @@ export function AddQuestionPage() {
                                         title: group.matching_item?.title || '',
                                         statement: group.matching_item?.statement || [''],
                                         option: e.target.value.split('\n').filter(o => o.trim()),
-                                        variant_type: group.matching_item?.variant_type || 'alphabet',
+                                        variant_type: group.matching_item?.variant_type || 'letter',
                                         answer_count: group.matching_item?.answer_count || 1,
                                       }
                                     })}
@@ -697,7 +706,7 @@ export function AddQuestionPage() {
                                 <div>
                                   <label className="block text-sm text-slate-700 mb-2">Variant Turi</label>
                                   <select
-                                    value={group.matching_item?.variant_type || 'alphabet'}
+                                    value={group.matching_item?.variant_type || 'letter'}
                                     onChange={(e) => updateGroup(index, {
                                       matching_item: {
                                         ...group.matching_item,
@@ -710,9 +719,9 @@ export function AddQuestionPage() {
                                     })}
                                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
                                   >
-                                    <option value="alphabet">Alifbo (A, B, C)</option>
+                                    <option value="letter">Alifbo (A, B, C)</option>
                                     <option value="romain">Rim raqamlari (I, II, III)</option>
-                                    <option value="numeric">Raqamlar (1, 2, 3)</option>
+                                    <option value="number">Raqamlar (1, 2, 3)</option>
                                   </select>
                                 </div>
 
@@ -727,7 +736,7 @@ export function AddQuestionPage() {
                                         title: group.matching_item?.title || '',
                                         statement: group.matching_item?.statement || [''],
                                         option: group.matching_item?.option || [''],
-                                        variant_type: group.matching_item?.variant_type || 'alphabet',
+                                        variant_type: group.matching_item?.variant_type || 'letter',
                                         answer_count: parseInt(e.target.value) || 1,
                                       }
                                     })}

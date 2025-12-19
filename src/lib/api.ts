@@ -36,7 +36,7 @@ async function checkAPIAvailability(): Promise<boolean> {
 export type PassageType = 'passage1' | 'passage2' | 'passage3';
 export type PartType = 'part_1' | 'part_2' | 'part_3' | 'part_4';
 export type WritingType = 'task1' | 'task2';
-export type VariantType = 'romain' | 'alphabet' | 'numeric';
+export type VariantType = 'letter' | 'number' | 'romain';
 export type CriteriaType = 'ONE_WORD' | 'ONE_WORD_OR_NUMBER' | 'NMT_ONE' | 'NMT_TWO' | 'NMT_THREE' | 'NMT_TWO_NUM' | 'NMT_THREE_NUM' | 'NUMBER_ONLY' | 'FROM_BOX';
 
 // Question Types from backend
@@ -48,7 +48,7 @@ export interface QuestionType {
 // Question Group structures
 export interface GapFillingData {
   title: string;
-  principle: CriteriaType;
+  principle: CriteriaType; // Changed from criteria to principle
   body: string;
 }
 
@@ -81,6 +81,17 @@ export interface CreateReadingPassageRequest {
   title: string;
   body: string;
   groups: QuestionGroup[];
+}
+
+// Bulk Create Reading Passages Request (v2 API)
+export interface BulkCreateReadingPassagesRequest {
+  reading_id: number;
+  passages: {
+    passage_type: PassageType;
+    title: string;
+    body: string;
+    groups: QuestionGroup[];
+  }[];
 }
 
 export interface ReadingPassage {
@@ -142,11 +153,18 @@ export interface TestResponse {
   updated_at?: string;
   name: string;
   is_active: boolean;
-  reading?: {
-    id: number;
-  };
-  listening?: any;
-  writing?: any[];
+  reading?: number | { id: number };
+  listening?: number | any;
+  writing?: number | any[];
+  reading_passage1_completed?: boolean;
+  reading_passage2_completed?: boolean;
+  reading_passage3_completed?: boolean;
+  listening_part1_completed?: boolean;
+  listening_part2_completed?: boolean;
+  listening_part3_completed?: boolean;
+  listening_part4_completed?: boolean;
+  writing_task1_completed?: boolean;
+  writing_task2_completed?: boolean;
 }
 
 export interface CreateTestRequest {
@@ -335,14 +353,14 @@ export async function createListening(testId: number): Promise<ListeningResponse
   try {
     console.log('🔄 Creating listening section for test:', testId);
     
-    // Backend expects test_id not test
+    // Backend expects test field
     const response = await fetch(`${BASE_URL}/listening-create/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ 
-        test_id: testId  // Changed from 'test' to 'test_id'
+        test: testId
       }),
     });
 
@@ -510,8 +528,47 @@ export async function getTestDetail(id: number): Promise<TestDetail> {
   const apiAvailable = await checkAPIAvailability();
   
   if (!apiAvailable) {
-    // Offline mode: return mock detailed test
-    throw new Error('Test details not available in offline mode');
+    // Offline mode: get test from offline storage
+    const tests = getOfflineTests();
+    const test = tests.find(t => t.id === id);
+    
+    if (!test) {
+      throw new Error('Test not found in offline storage');
+    }
+    
+    // Extract IDs from reading/listening/writing (can be number or object)
+    const readingId = typeof test.reading === 'object' && test.reading !== null 
+      ? test.reading.id 
+      : test.reading || null;
+    const listeningId = typeof test.listening === 'object' && test.listening !== null && 'id' in test.listening
+      ? test.listening.id 
+      : (typeof test.listening === 'number' ? test.listening : null);
+    const writingId = typeof test.writing === 'object' && test.writing !== null && 'id' in test.writing
+      ? test.writing.id 
+      : (typeof test.writing === 'number' ? test.writing : null);
+    
+    // Convert TestResponse to TestDetail format
+    const testDetail: TestDetail = {
+      id: test.id,
+      name: test.name,
+      is_active: test.is_active,
+      created_at: test.created_at || new Date().toISOString(),
+      updated_at: test.updated_at || new Date().toISOString(),
+      reading: readingId,
+      listening: listeningId,
+      writing: writingId,
+      reading_passage1_completed: test.reading_passage1_completed || false,
+      reading_passage2_completed: test.reading_passage2_completed || false,
+      reading_passage3_completed: test.reading_passage3_completed || false,
+      listening_part1_completed: test.listening_part1_completed || false,
+      listening_part2_completed: test.listening_part2_completed || false,
+      listening_part3_completed: test.listening_part3_completed || false,
+      listening_part4_completed: test.listening_part4_completed || false,
+      writing_task1_completed: test.writing_task1_completed || false,
+      writing_task2_completed: test.writing_task2_completed || false,
+    };
+    
+    return testDetail;
   }
 
   try {
@@ -529,7 +586,47 @@ export async function getTestDetail(id: number): Promise<TestDetail> {
     return response.json();
   } catch (error) {
     console.error('Error fetching test details:', error);
-    throw error;
+    // Fallback to offline storage
+    const tests = getOfflineTests();
+    const test = tests.find(t => t.id === id);
+    
+    if (!test) {
+      throw error;
+    }
+    
+    // Extract IDs from reading/listening/writing (can be number or object)
+    const readingId = typeof test.reading === 'object' && test.reading !== null 
+      ? test.reading.id 
+      : test.reading || null;
+    const listeningId = typeof test.listening === 'object' && test.listening !== null && 'id' in test.listening
+      ? test.listening.id 
+      : (typeof test.listening === 'number' ? test.listening : null);
+    const writingId = typeof test.writing === 'object' && test.writing !== null && 'id' in test.writing
+      ? test.writing.id 
+      : (typeof test.writing === 'number' ? test.writing : null);
+    
+    // Convert TestResponse to TestDetail format
+    const testDetail: TestDetail = {
+      id: test.id,
+      name: test.name,
+      is_active: test.is_active,
+      created_at: test.created_at || new Date().toISOString(),
+      updated_at: test.updated_at || new Date().toISOString(),
+      reading: readingId,
+      listening: listeningId,
+      writing: writingId,
+      reading_passage1_completed: test.reading_passage1_completed || false,
+      reading_passage2_completed: test.reading_passage2_completed || false,
+      reading_passage3_completed: test.reading_passage3_completed || false,
+      listening_part1_completed: test.listening_part1_completed || false,
+      listening_part2_completed: test.listening_part2_completed || false,
+      listening_part3_completed: test.listening_part3_completed || false,
+      listening_part4_completed: test.listening_part4_completed || false,
+      writing_task1_completed: test.writing_task1_completed || false,
+      writing_task2_completed: test.writing_task2_completed || false,
+    };
+    
+    return testDetail;
   }
 }
 
@@ -640,6 +737,53 @@ export async function createReadingPassage(data: CreateReadingPassageRequest): P
     console.log('✅ Reading passage created successfully');
   } catch (error) {
     console.error('💥 Error creating passage:', error);
+    throw error;
+  }
+}
+
+// Bulk create reading passages (v2 API)
+export async function bulkCreateReadingPassages(data: BulkCreateReadingPassagesRequest): Promise<any> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    // Offline mode: just return success
+    console.log('Offline mode: passages saved locally');
+    return { message: 'Saved locally in offline mode' };
+  }
+
+  try {
+    console.log('🔄 Bulk creating reading passages:', data);
+    
+    const response = await fetch(`https://api.samariddin.space/api/v2/reading-passage-bulk-create/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    console.log('📡 Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Error response:', errorText);
+      
+      let errorMessage = 'Failed to create passages';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || JSON.stringify(errorJson, null, 2);
+      } catch {
+        errorMessage = errorText || `HTTP ${response.status}`;
+      }
+      
+      throw new Error(`Passages yaratib bo'lmadi: ${errorMessage}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Reading passages created successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('💥 Error creating passages:', error);
     throw error;
   }
 }

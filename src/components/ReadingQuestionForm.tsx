@@ -369,7 +369,7 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                             onChange={(e) => updateQuestionGroup(index, {
                               gap_filling: {
                                 title: e.target.value,
-                                criteria: group.gap_filling?.criteria || 'NMT_TWO',
+                                principle: group.gap_filling?.principle || 'NMT_TWO',
                                 body: group.gap_filling?.body || '',
                               }
                             })}
@@ -384,13 +384,13 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                             Javob Formati <span className="text-red-500">*</span>
                           </label>
                           <select
-                            value={group.gap_filling?.criteria || ''}
+                            value={group.gap_filling?.principle || ''}
                             onChange={(e) => {
-                              console.log('Selected criteria:', e.target.value);
+                              console.log('Selected principle:', e.target.value);
                               updateQuestionGroup(index, {
                                 gap_filling: {
                                   title: group.gap_filling?.title || '',
-                                  criteria: e.target.value as CriteriaType,
+                                  principle: e.target.value as CriteriaType,
                                   body: group.gap_filling?.body || '',
                                 }
                               });
@@ -426,7 +426,7 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                             onChange={(e) => updateQuestionGroup(index, {
                               gap_filling: {
                                 title: group.gap_filling?.title || '',
-                                criteria: group.gap_filling?.criteria || 'NMT_TWO',
+                                principle: group.gap_filling?.principle || 'NMT_TWO',
                                 body: e.target.value,
                               }
                             })}
