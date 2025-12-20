@@ -127,6 +127,30 @@ export interface WritingSection {
   type: WritingType;
 }
 
+export interface WritingResponse {
+  id: number;
+  test: number;
+  type: WritingType;
+  question: string;
+  image: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateWritingRequest {
+  test: number;
+  type: WritingType;
+  question: string;
+  image?: File | null;
+}
+
+export interface UpdateWritingRequest {
+  test?: number;
+  type?: WritingType;
+  question?: string;
+  image?: File | null;
+}
+
 export interface TestDetail {
   id: number;
   name: string;
@@ -851,6 +875,259 @@ export async function createListeningQuestionGroup(
     console.error('Failed to create listening question group:', response.status, errorText);
     throw new Error('Failed to create listening question group');
   }
+}
+
+// Create writing section
+export async function createWriting(data: CreateWritingRequest): Promise<WritingResponse> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    // Offline mode: return mock data
+    return {
+      id: Date.now(),
+      test: data.test,
+      type: data.type,
+      question: data.question,
+      image: data.image ? URL.createObjectURL(data.image) : null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  const formData = new FormData();
+  formData.append('test', data.test.toString());
+  formData.append('type', data.type);
+  formData.append('question', data.question);
+  if (data.image) {
+    formData.append('image', data.image);
+  }
+
+  const response = await fetch(`${BASE_URL}/writing-create/`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ Failed to create writing section:', response.status, errorText);
+    
+    // Try to parse error as JSON for better debugging
+    try {
+      const errorJson = JSON.parse(errorText);
+      console.error('❌ Error details:', errorJson);
+      throw new Error(`Failed to create writing section: ${JSON.stringify(errorJson)}`);
+    } catch {
+      throw new Error(`Failed to create writing section: ${errorText}`);
+    }
+  }
+
+  return response.json();
+}
+
+// Get writing task by ID
+export async function getWriting(id: number): Promise<WritingResponse> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    throw new Error('Writing task not available in offline mode');
+  }
+
+  try {
+    console.log('🔄 Fetching writing task:', id);
+    
+    const response = await fetch(`${BASE_URL}/writing/${id}/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch writing task: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Writing task loaded:', data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching writing task:', error);
+    throw error;
+  }
+}
+
+// Get all writing tasks (list)
+export async function getWritingList(): Promise<WritingResponse[]> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    return [];
+  }
+
+  try {
+    console.log('🔄 Fetching writing tasks list...');
+    
+    const response = await fetch(`${BASE_URL}/writing-list/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch writing list: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Writing list loaded:', data);
+    
+    return data.results || data;
+  } catch (error) {
+    console.error('Error fetching writing list:', error);
+    return [];
+  }
+}
+
+// Get writing tasks for a specific test
+export async function getWritingTasksForTest(testId: number): Promise<WritingResponse[]> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    return [];
+  }
+
+  try {
+    console.log('🔄 Fetching writing tasks for test:', testId);
+    
+    // Use writing-detail endpoint with test_id in URL path
+    const response = await fetch(`${BASE_URL}/writing-detail/${testId}/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch writing tasks for test: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Writing tasks for test loaded:', data);
+    
+    // Backend returns array of writing tasks for this test
+    return Array.isArray(data) ? data : (data.results || []);
+  } catch (error) {
+    console.error('Error fetching writing tasks for test:', error);
+    return [];
+  }
+}
+
+// Update writing section (PUT - full update)
+export async function updateWriting(id: number, data: Partial<CreateWritingRequest>): Promise<WritingResponse> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    return {
+      id,
+      test: data.test || 0,
+      type: data.type || 'task1',
+      question: data.question || '',
+      image: data.image ? URL.createObjectURL(data.image) : null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  const formData = new FormData();
+  
+  // UPDATE: Send 'type' field (required), but DON'T send 'test' field
+  if (data.type) {
+    formData.append('type', data.type);
+  }
+  
+  if (data.question) {
+    formData.append('question', data.question);
+  }
+  
+  if (data.image) {
+    formData.append('image', data.image);
+  }
+
+  console.log('🔄 PUT: Full update for writing section:', id, 'Fields:', Array.from(formData.keys()));
+
+  const response = await fetch(`${BASE_URL}/writing-update/${id}/`, {
+    method: 'PUT',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ Failed to update writing section:', response.status, errorText);
+    
+    try {
+      const errorJson = JSON.parse(errorText);
+      console.error('❌ Update error details:', errorJson);
+      throw new Error(`Failed to update writing section: ${JSON.stringify(errorJson)}`);
+    } catch {
+      throw new Error(`Failed to update writing section: ${errorText}`);
+    }
+  }
+
+  return response.json();
+}
+
+// Patch writing section (PATCH - partial update)
+export async function patchWriting(id: number, data: Partial<CreateWritingRequest>): Promise<WritingResponse> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    return {
+      id,
+      test: data.test || 0,
+      type: data.type || 'task1',
+      question: data.question || '',
+      image: data.image ? URL.createObjectURL(data.image) : null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  const formData = new FormData();
+  
+  // PATCH: Send 'type' field (required), but DON'T send 'test' field
+  if (data.type) {
+    formData.append('type', data.type);
+  }
+  
+  if (data.question) {
+    formData.append('question', data.question);
+  }
+  
+  if (data.image) {
+    formData.append('image', data.image);
+  }
+
+  console.log('🔄 PATCH: Partial update for writing section:', id, 'Fields:', Array.from(formData.keys()));
+
+  const response = await fetch(`${BASE_URL}/writing-update/${id}/`, {
+    method: 'PATCH',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ Failed to patch writing section:', response.status, errorText);
+    
+    try {
+      const errorJson = JSON.parse(errorText);
+      console.error('❌ Patch error details:', errorJson);
+      throw new Error(`Failed to patch writing section: ${JSON.stringify(errorJson)}`);
+    } catch {
+      throw new Error(`Failed to patch writing section: ${errorText}`);
+    }
+  }
+
+  return response.json();
 }
 
 // Legacy types for backward compatibility

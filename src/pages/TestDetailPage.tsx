@@ -267,20 +267,20 @@ export function TestDetailPage() {
             <div>
               <h3 className="text-lg text-slate-900">Writing</h3>
               <div className="text-sm text-slate-500">
-                ID: {typeof test.writing === 'object' && test.writing !== null ? test.writing.id : test.writing ?? 'N/A'}
+                ID:
               </div>
             </div>
           </div>
           
           <div className="space-y-2 text-sm text-slate-600">
             <div className="flex justify-between">
-              <div>Task 1:</div>
+              <div>Task1:</div>
               <div className={test.writing_task1_completed ? 'text-green-600' : 'text-slate-400'}>
                 {test.writing_task1_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
               </div>
             </div>
             <div className="flex justify-between">
-              <div>Task 2:</div>
+              <div>Task2:</div>
               <div className={test.writing_task2_completed ? 'text-green-600' : 'text-slate-400'}>
                 {test.writing_task2_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
               </div>

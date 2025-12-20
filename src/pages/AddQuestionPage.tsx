@@ -13,8 +13,11 @@ import {
   getTestDetail,
   CriteriaType,
   VariantType,
+  WritingType,
+  getWritingTasksForTest,
 } from '../lib/api';
 import { BulkReadingForm } from '../components/BulkReadingForm';
+import { WritingForm } from '../components/WritingForm';
 
 type SectionType = 'reading' | 'listening' | 'writing';
 type SubType = 'passage1' | 'passage2' | 'passage3' | 'part_1' | 'part_2' | 'part_3' | 'part_4' | 'task1' | 'task2' | 'bulk_passages';
@@ -41,6 +44,10 @@ export function AddQuestionPage() {
   const [body, setBody] = useState('');
   const [groups, setGroups] = useState<QuestionGroup[]>([]);
   const [passages, setPassages] = useState<any[]>([]);
+  
+  // Writing tasks state
+  const [writingTasks, setWritingTasks] = useState<any[]>([]);
+  const [loadingWritingTasks, setLoadingWritingTasks] = useState(false);
 
   // Load test details and question types on mount
   useEffect(() => {
@@ -82,6 +89,13 @@ export function AddQuestionPage() {
       loadPassages();
     }
   }, [readingId, selectedSection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load writing tasks when writing section is selected
+  useEffect(() => {
+    if (selectedSection === 'writing' && testId) {
+      loadWritingTasks();
+    }
+  }, [testId, selectedSection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load existing passage data when sub type changes
   useEffect(() => {
@@ -196,6 +210,22 @@ export function AddQuestionPage() {
       setTitle('');
       setBody('');
       setGroups([]);
+    }
+  };
+
+  const loadWritingTasks = async () => {
+    if (!testId) return;
+    
+    try {
+      setLoadingWritingTasks(true);
+      const response = await getWritingTasksForTest(parseInt(testId));
+      console.log('📦 Writing tasks response:', response);
+      console.log('📦 Writing tasks:', response);
+      setWritingTasks(response || []);
+    } catch (error) {
+      console.error('Error loading writing tasks:', error);
+    } finally {
+      setLoadingWritingTasks(false);
     }
   };
 
@@ -412,7 +442,7 @@ export function AddQuestionPage() {
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
-                    Task {type.slice(-4)}
+                    Task{type.slice(-1)}
                   </button>
                 ))}
               </>
@@ -785,13 +815,30 @@ export function AddQuestionPage() {
             </div>
           )}
 
-          {selectedSection === 'writing' && (
-            <div className="max-w-3xl mx-auto text-center py-16">
-              <PenTool className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-xl text-slate-900 mb-2">Writing Section</h3>
-              <p className="text-slate-600">Writing task qo'shish funksiyasi tez orada...</p>
-            </div>
-          )}
+          {selectedSection === 'writing' && (() => {
+            // Find existing task for current taskType
+            const existingTask = writingTasks.find(task => task.type === selectedSubType);
+            console.log('🔍 Existing writing task:', existingTask);
+            console.log('🔍 Task type:', selectedSubType);
+            console.log('🔍 All writing tasks:', writingTasks);
+            
+            return (
+              <WritingForm 
+                testId={testId ? parseInt(testId) : 0}
+                taskType={selectedSubType as WritingType}
+                existingData={existingTask ? {
+                  id: existingTask.id,
+                  question: existingTask.question || '',
+                  image: existingTask.image || null,
+                } : undefined}
+                onSuccess={() => {
+                  alert('✅ Writing task saqlandi!');
+                  // Reload writing tasks to update the form
+                  loadWritingTasks();
+                }}
+              />
+            );
+          })()}
         </main>
       </div>
     </div>
