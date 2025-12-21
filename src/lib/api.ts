@@ -65,6 +65,16 @@ export interface MatchingItemData {
   answer_count: number;
 }
 
+export interface TableCompletionData {
+  principle: CriteriaType;
+  row_count: number;
+  column_counts: string[][];
+  table_details: {
+    instruction?: string;
+    rows?: any[][];
+  };
+}
+
 export interface QuestionGroup {
   question_type: string;
   from_value: number;
@@ -72,6 +82,7 @@ export interface QuestionGroup {
   gap_filling?: GapFillingData;
   identify_info?: IdentifyInfoData;
   matching_item?: MatchingItemData;
+  table_completion?: TableCompletionData;
 }
 
 // Listening Question Group (with listening_question_type for API)
@@ -82,6 +93,7 @@ export interface ListeningQuestionGroup {
   gap_filling?: GapFillingData;
   identify_info?: IdentifyInfoData;
   matching_item?: MatchingItemData;
+  table_completion?: TableCompletionData;
 }
 
 // Reading Passage Create Request
@@ -1370,7 +1382,7 @@ export async function createListeningAudio(audioFile: File, listeningPartId?: nu
       formData.append('listening_part', listeningPartId.toString());
     }
 
-    const response = await fetch(`${BASE_URL}/listening/audio/create/`, {
+    const response = await fetch(`${BASE_URL}/listening-audio/`, {
       method: 'POST',
       body: formData,
     });
@@ -1517,12 +1529,6 @@ export async function getListeningQuestionTypes(): Promise<QuestionType[]> {
 
 // Get listening parts for a listening section
 export async function getListeningParts(listeningId: number): Promise<any> {
-  const apiAvailable = await checkAPIAvailability();
-  
-  if (!apiAvailable) {
-    throw new Error('Parts not available in offline mode');
-  }
-
   try {
     console.log('🔄 Fetching listening parts for listening:', listeningId);
     

@@ -476,7 +476,14 @@ export function AddQuestionPage() {
       navigate(`/test/${testId}`);
     } catch (error) {
       console.error('Error saving passage:', error);
-      alert(`Xatolik: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Check if error is about all passages existing
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('already exists all')) {
+        alert('⚠️ Bu Reading uchun barcha 3 ta passage allaqachon yaratilgan! Yangi Test yarating.');
+      } else {
+        alert(`Xatolik: ${errorMessage}`);
+      }
     } finally {
       setSaving(false);
     }
@@ -500,6 +507,7 @@ export function AddQuestionPage() {
         gap_filling: group.gap_filling,
         identify_info: group.identify_info,
         matching_item: group.matching_item,
+        table_completion: group.table_completion,
       }));
       
       // Step 1: Create Part (without audio)
@@ -526,7 +534,22 @@ export function AddQuestionPage() {
       navigate(`/test/${testId}`);
     } catch (error) {
       console.error('Error saving part:', error);
-      alert(`Xatolik: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Check if error is about all parts existing
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('already exists all')) {
+        alert('⚠️ Bu Listening uchun barcha 4 ta part allaqachon yaratilgan! Yangi Test yarating.');
+        /*alert(
+          '⚠️ Bu Listening uchun barcha 4 ta part allaqachon yaratilgan!\\n\\n' +
+          'Har bir Listening faqat 4 ta part (Part 1, 2, 3, 4) ga ega bo\\'lishi mumkin.\\n\\n' +
+          '📝 Variantlar:\\n' +
+          '1. Yangi Test yaratib, yangi Listening qo\\'shing\\n' +
+          '2. Mavjud Part\\'ni tahrirlang (keyingi versiyada qo\\'shiladi)\\n' +
+          '3. Boshqa Test\\'ni tanlang'
+        );*/
+      } else {
+        alert(`Xatolik: ${errorMessage}`);
+      }
     } finally {
       setSaving(false);
     }

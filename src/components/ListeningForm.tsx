@@ -10,7 +10,7 @@ import {
   ListeningAudioResponse,
 } from '../lib/api';
 import { TableCompletionEditor, TableCompletionData } from './TableCompletionEditor';
-import { deserializeTableData, serializeTableData } from '../lib/tableCompletionHelper';
+import { deserializeTableData, serializeTableData, tableDataToBackend } from '../lib/tableCompletionHelper';
 
 interface ListeningFormProps {
   questionTypes: QuestionType[];
@@ -457,33 +457,26 @@ export function ListeningForm({
                               <label className="block text-sm text-slate-700 mb-2">Table Tuzilishi</label>
                               <TableCompletionEditor
                                 data={(() => {
-                                  try {
-                                    const parsed = JSON.parse(group.gap_filling?.body || '{}');
+                                  // Load from table_completion field, not gap_filling!
+                                  if (group.table_completion) {
                                     return {
-                                      principle: group.gap_filling?.principle || 'NMT_TWO',
-                                      instruction: parsed.instruction,
-                                      rows: parsed.rows || [],
-                                      questionNumberStart: group.from_value,
-                                    };
-                                  } catch {
-                                    return {
-                                      principle: group.gap_filling?.principle || 'NMT_TWO',
-                                      rows: [],
+                                      principle: group.table_completion.principle || 'NMT_TWO',
+                                      instruction: group.table_completion.table_details?.instruction,
+                                      rows: group.table_completion.table_details?.rows || [],
                                       questionNumberStart: group.from_value,
                                     };
                                   }
+                                  return {
+                                    principle: 'NMT_TWO',
+                                    rows: [],
+                                    questionNumberStart: group.from_value,
+                                  };
                                 })()}
                                 onChange={(tableData) => {
+                                  // Save to table_completion field using tableDataToBackend helper
+                                  const backendFormat = tableDataToBackend(tableData);
                                   updateGroup(index, {
-                                    gap_filling: {
-                                      ...group.gap_filling,
-                                      title: group.gap_filling?.title || '',
-                                      principle: tableData.principle,
-                                      body: JSON.stringify({
-                                        instruction: tableData.instruction,
-                                        rows: tableData.rows,
-                                      }),
-                                    },
+                                    table_completion: backendFormat,
                                   });
                                 }}
                                 mode="edit"
