@@ -582,7 +582,7 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
                         >
                           {/* Group Header */}
                           <div className="bg-slate-50 p-4 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3 flex-1">
                               <button
                                 type="button"
                                 onClick={() => toggleGroupExpanded(pIndex, gIndex.toString())}
@@ -594,27 +594,29 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
                                   <ChevronDown className="w-4 h-4 text-slate-600" />
                                 )}
                               </button>
-                              <div>
-                                <p className="text-sm">
-                                  <strong>Guruh {gIndex + 1}</strong>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-sm">
+                                    <strong>Guruh {gIndex + 1}</strong>
+                                  </p>
                                   {group.from_value > 0 && group.to_value > 0 && (
-                                    <span className="ml-2 text-[#042d62]">
-                                      (Q{group.from_value}-{group.to_value})
+                                    <span className="text-xs px-2 py-1 bg-[#042d62] text-white rounded">
+                                      Q{group.from_value}-{group.to_value}
                                     </span>
                                   )}
-                                </p>
-                                {group.question_type && (
-                                  <p className="text-xs text-slate-600">
-                                    {readingQuestionTypes.find(t => t.value === group.question_type)?.label}
-                                  </p>
-                                )}
+                                  {group.question_type && (
+                                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                                      {readingQuestionTypes.find(t => t.value === group.question_type)?.label}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             {passage.groups.length > 0 && (
                               <button
                                 type="button"
                                 onClick={() => removeQuestionGroup(pIndex, gIndex)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors ml-2"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -631,7 +633,15 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
                                 </label>
                                 <select
                                   value={group.question_type}
-                                  onChange={(e) => updateQuestionGroup(pIndex, gIndex, { question_type: e.target.value })}
+                                  onChange={(e) => {
+                                    // Clear existing type-specific data when changing type
+                                    updateQuestionGroup(pIndex, gIndex, { 
+                                      question_type: e.target.value,
+                                      gap_filling: undefined,
+                                      identify_info: undefined,
+                                      matching_item: undefined,
+                                    });
+                                  }}
                                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
                                   required
                                 >

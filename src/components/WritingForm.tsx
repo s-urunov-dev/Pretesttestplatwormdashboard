@@ -14,24 +14,37 @@ interface WritingFormProps {
 }
 
 export function WritingForm({ testId, taskType, onSuccess, existingData }: WritingFormProps) {
-  const [question, setQuestion] = useState(existingData?.question || '');
+  const [question, setQuestion] = useState('');
   const [image, setImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(existingData?.image || null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
   // Track original values to detect changes
-  const [originalQuestion] = useState(existingData?.question || '');
-  const [originalImage] = useState(existingData?.image || null);
+  const [originalQuestion, setOriginalQuestion] = useState('');
+  const [originalImage, setOriginalImage] = useState<string | null>(null);
 
   const MAX_QUESTION_LENGTH = 500;
   const remainingChars = MAX_QUESTION_LENGTH - question.length;
 
+  // Update form when existingData or taskType changes
   useEffect(() => {
-    if (existingData) {
-      setQuestion(existingData.question);
+    console.log('🔄 WritingForm useEffect - taskType:', taskType, 'existingData:', existingData);
+    
+    if (existingData && existingData.id) {
+      // Load existing task data
+      setQuestion(existingData.question || '');
       setImagePreview(existingData.image || null);
+      setOriginalQuestion(existingData.question || '');
+      setOriginalImage(existingData.image || null);
+    } else {
+      // Clear form for new task
+      setQuestion('');
+      setImage(null);
+      setImagePreview(null);
+      setOriginalQuestion('');
+      setOriginalImage(null);
     }
-  }, [existingData]);
+  }, [existingData, taskType]); // Reset when taskType changes
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -45,65 +58,104 @@ export function WritingForm({ testId, taskType, onSuccess, existingData }: Writi
     }
   };
 
+  // Check if image has changed (user uploaded new file)
+  const imageChanged = image !== null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!question.trim()) return;
 
     setLoading(true);
+    
+    // Re-check existingData at submission time (it may have changed after previous save)
+    const hasExistingId = existingData?.id !== undefined && existingData?.id !== null;
+    
+    console.log('====================================');
+    console.log('📝 WRITING FORM SUBMISSION START');
+    console.log('====================================');
+    console.log('Test ID:', testId);
+    console.log('Task Type:', taskType);
+    console.log('existingData:', JSON.stringify(existingData, null, 2));
+    console.log('existingData?.id:', existingData?.id);
+    console.log('typeof existingData?.id:', typeof existingData?.id);
+    console.log('hasExistingId:', hasExistingId);
+    console.log('Question:', question.trim().substring(0, 50) + '...');
+    console.log('Has new image file:', !!image);
+    console.log('====================================');
+    
     try {
       const { createWriting, updateWriting, patchWriting } = await import('../lib/api');
       
-      if (existingData?.id) {
-        // UPDATE mode - send 'type' field (required by API)
-        const questionChanged = question.trim() !== originalQuestion;
-        const imageChanged = image !== null;
+      if (hasExistingId && existingData?.id) {
+        // UPDATE existing task
+        console.log('✅ UPDATE MODE - Patching existing task');
+        console.log('   Existing task ID:', existingData.id);
+        console.log('   Task Type:', taskType);
+        console.log('📝 Update strategy: PATCH (partial update)');
         
-        console.log('🔍 Change detection:', { questionChanged, imageChanged });
-        
-        // Determine update method based on what changed
-        const isPartialUpdate = questionChanged !== imageChanged; // Only one field changed
-        const updateMethod = isPartialUpdate ? 'PATCH' : 'PUT';
-        
-        console.log(`⚠️ Updating task with ${updateMethod}:`, existingData.id);
-        
-        // Build update payload - MUST include 'type' field
+        // Build update payload
+        // Backend /writing-update/{writing_task_id}/ uses writing task ID in URL
+        // and 'type' in body to validate the task type
         const updateData: any = {
-          type: taskType, // ✅ Required by API
+          type: taskType, // To validate task type
+          question: question.trim(),
         };
         
-        if (questionChanged) {
-          updateData.question = question.trim();
-        }
-        
-        if (imageChanged) {
+        // Only include image if user selected a NEW image file
+        if (imageChanged && image) {
           updateData.image = image;
-        }
-        
-        console.log('📤 Update payload:', Object.keys(updateData));
-        
-        if (isPartialUpdate) {
-          await patchWriting(existingData.id, updateData);
+          console.log('   ✅ Adding NEW image to payload (user uploaded new file)');
         } else {
-          await updateWriting(existingData.id, updateData);
+          console.log('   ⏭️  Skipping image (no new file selected, keeping existing image)');
         }
+        
+        console.log('📤 Final update payload fields:', Object.keys(updateData));
+        console.log('📤 Calling PATCH API with writing task ID:', existingData.id);
+        console.log('📤 API URL will be: /writing-update/' + existingData.id + '/');
+        console.log('📤 type in body:', taskType, '(to validate task type)');
+        
+        console.log('⏳ Sending PATCH request...');
+        const result = await patchWriting(existingData.id, updateData);
+        console.log('✅ PATCH request completed:', result);
         
         alert('✅ Writing task yangilandi!');
       } else {
-        // CREATE new task - SEND test and type fields
-        console.log('✅ Creating new task...');
+        // CREATE new task
+        console.log('✅ CREATE MODE - Creating new task');
+        console.log('Test ID:', testId);
+        console.log('Task type:', taskType);
+        
         const createData = {
           test: testId,
           type: taskType,
           question: question.trim(),
           image: image || undefined,
         };
-        await createWriting(createData);
+        
+        console.log('📤 Create payload:', {
+          test: createData.test,
+          type: createData.type,
+          questionLength: createData.question.length,
+          hasImage: !!createData.image
+        });
+        console.log('📤 API URL will be: /writing-create/' + testId + '/');
+        
+        const result = await createWriting(createData);
+        console.log('✅ CREATE request completed:', result);
         alert('✅ Writing task yaratildi!');
       }
       
+      console.log('====================================');
+      console.log('✅ SUBMISSION SUCCESSFUL');
+      console.log('====================================');
+      
       onSuccess?.();
     } catch (error) {
-      console.error('Error saving writing task:', error);
+      console.error('====================================');
+      console.error('❌ SUBMISSION FAILED');
+      console.error('Error:', error);
+      console.error('Error message:', (error as Error).message);
+      console.error('====================================');
       alert('❌ Xatolik: ' + (error as Error).message);
     } finally {
       setLoading(false);

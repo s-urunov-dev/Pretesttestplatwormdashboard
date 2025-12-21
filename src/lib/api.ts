@@ -698,15 +698,19 @@ export async function getReadingPassages(readingId: number): Promise<any> {
   try {
     console.log('🔄 Fetching reading passages for reading:', readingId);
     
-    // Try with expand parameter to get full groups data
-    const response = await fetch(`${BASE_URL}/readings/${readingId}/passages/?expand=groups`, {
+    // Use the correct endpoint: /readings/{reading_id}/passages/ (reading_id in URL path)
+    const response = await fetch(`${BASE_URL}/readings/${readingId}/passages/`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
+    console.log('📡 Passages response status:', response.status);
+
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Passages error:', errorText);
       throw new Error(`Failed to fetch passages: ${response.status}`);
     }
 
@@ -895,14 +899,16 @@ export async function createWriting(data: CreateWritingRequest): Promise<Writing
   }
 
   const formData = new FormData();
-  formData.append('test', data.test.toString());
+  // CREATE: Send type and question, NOT test in body (test is in URL)
   formData.append('type', data.type);
   formData.append('question', data.question);
   if (data.image) {
     formData.append('image', data.image);
   }
 
-  const response = await fetch(`${BASE_URL}/writing-create/`, {
+  console.log('✅ Creating writing section for test:', data.test);
+
+  const response = await fetch(`${BASE_URL}/writing-create/${data.test}/`, {
     method: 'POST',
     body: formData,
   });
@@ -1038,42 +1044,107 @@ export async function updateWriting(id: number, data: Partial<CreateWritingReque
     };
   }
 
-  const formData = new FormData();
+  // Use FormData if image is present, otherwise use JSON
+  const hasImage = !!data.image;
   
-  // UPDATE: Send 'type' field (required), but DON'T send 'test' field
-  if (data.type) {
-    formData.append('type', data.type);
-  }
-  
-  if (data.question) {
-    formData.append('question', data.question);
-  }
-  
-  if (data.image) {
-    formData.append('image', data.image);
-  }
-
-  console.log('🔄 PUT: Full update for writing section:', id, 'Fields:', Array.from(formData.keys()));
-
-  const response = await fetch(`${BASE_URL}/writing-update/${id}/`, {
-    method: 'PUT',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('❌ Failed to update writing section:', response.status, errorText);
+  if (hasImage) {
+    const formData = new FormData();
     
-    try {
-      const errorJson = JSON.parse(errorText);
-      console.error('❌ Update error details:', errorJson);
-      throw new Error(`Failed to update writing section: ${JSON.stringify(errorJson)}`);
-    } catch {
-      throw new Error(`Failed to update writing section: ${errorText}`);
+    // Add fields to FormData
+    if (data.question) {
+      formData.append('question', data.question);
     }
-  }
+    
+    if (data.image) {
+      formData.append('image', data.image);
+    }
 
-  return response.json();
+    if (data.type) {
+      formData.append('type', data.type);
+    }
+
+    const url = `${BASE_URL}/writing-update/${id}/`;
+    console.log('🔄 PATCH (with image): Partial update for writing section');
+    console.log('   URL:', url);
+    console.log('   ID:', id);
+    console.log('   Fields:', Array.from(formData.keys()));
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      body: formData,
+    });
+
+    console.log('📡 PATCH Response status:', response.status);
+    console.log('📡 PATCH Response OK:', response.ok);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Failed to patch writing section:', response.status, errorText);
+      console.error('❌ Request URL was:', url);
+      console.error('❌ Request method:', 'PATCH');
+      console.error('❌ Request had FormData with fields:', Array.from(formData.keys()));
+      
+      try {
+        const errorJson = JSON.parse(errorText);
+        console.error('❌ Patch error details:', errorJson);
+        throw new Error(`Failed to patch writing section: ${JSON.stringify(errorJson)}`);
+      } catch (parseError) {
+        throw new Error(`Failed to patch writing section: ${errorText}`);
+      }
+    }
+
+    const result = await response.json();
+    console.log('✅ PATCH successful:', result);
+    return result;
+  } else {
+    // JSON format for text-only updates
+    const jsonData: any = {};
+    
+    if (data.question) {
+      jsonData.question = data.question;
+    }
+
+    if (data.type) {
+      jsonData.type = data.type;
+    }
+
+    const url = `${BASE_URL}/writing-update/${id}/`;
+    console.log('🔄 PATCH (JSON): Partial update for writing section');
+    console.log('   URL:', url);
+    console.log('   ID:', id);
+    console.log('   Data:', jsonData);
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(jsonData),
+    });
+
+    console.log('📡 PATCH Response status:', response.status);
+    console.log('📡 PATCH Response OK:', response.ok);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Failed to patch writing section:', response.status, errorText);
+      console.error('❌ Request URL was:', url);
+      console.error('❌ Request method:', 'PATCH');
+      console.error('❌ Request body was:', JSON.stringify(jsonData));
+      
+      try {
+        const errorJson = JSON.parse(errorText);
+        console.error('❌ Patch error details:', errorJson);
+        throw new Error(`Failed to patch writing section: ${JSON.stringify(errorJson)}`);
+      } catch (parseError) {
+        throw new Error(`Failed to patch writing section: ${errorText}`);
+      }
+    }
+
+    const result = await response.json();
+    console.log('✅ PATCH successful:', result);
+    return result;
+  }
 }
 
 // Patch writing section (PATCH - partial update)
@@ -1092,42 +1163,116 @@ export async function patchWriting(id: number, data: Partial<CreateWritingReques
     };
   }
 
-  const formData = new FormData();
-  
-  // PATCH: Send 'type' field (required), but DON'T send 'test' field
-  if (data.type) {
-    formData.append('type', data.type);
-  }
-  
-  if (data.question) {
-    formData.append('question', data.question);
-  }
-  
-  if (data.image) {
-    formData.append('image', data.image);
-  }
+  console.log('🔧 patchWriting called with:', { id, dataKeys: Object.keys(data) });
+  console.log('🔧 Writing Task ID:', id, '(this is task1 or task2 ID)');
+  console.log('🔧 Data:', data);
 
-  console.log('🔄 PATCH: Partial update for writing section:', id, 'Fields:', Array.from(formData.keys()));
-
-  const response = await fetch(`${BASE_URL}/writing-update/${id}/`, {
-    method: 'PATCH',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('❌ Failed to patch writing section:', response.status, errorText);
+  // Use FormData if image is present, otherwise use JSON
+  const hasImage = !!data.image;
+  
+  if (hasImage) {
+    const formData = new FormData();
     
-    try {
-      const errorJson = JSON.parse(errorText);
-      console.error('❌ Patch error details:', errorJson);
-      throw new Error(`Failed to patch writing section: ${JSON.stringify(errorJson)}`);
-    } catch {
-      throw new Error(`Failed to patch writing section: ${errorText}`);
+    // Backend needs 'type' to validate the task type
+    if (data.type) {
+      formData.append('type', data.type);
     }
-  }
+    
+    if (data.question) {
+      formData.append('question', data.question);
+    }
+    
+    if (data.image) {
+      formData.append('image', data.image);
+    }
 
-  return response.json();
+    // Use WRITING TASK ID in URL (task1.id or task2.id)
+    const url = `${BASE_URL}/writing-update/${id}/`;
+    console.log('🔄 PATCH (with image): Partial update for writing section');
+    console.log('   URL:', url);
+    console.log('   Writing Task ID in URL:', id);
+    console.log('   Type in body:', data.type);
+    console.log('   Fields:', Array.from(formData.keys()));
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      body: formData,
+    });
+
+    console.log('📡 PATCH Response status:', response.status);
+    console.log('📡 PATCH Response OK:', response.ok);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Failed to patch writing section:', response.status, errorText);
+      console.error('❌ Request URL was:', url);
+      console.error('❌ Request method:', 'PATCH');
+      console.error('❌ Request had FormData with fields:', Array.from(formData.keys()));
+      
+      try {
+        const errorJson = JSON.parse(errorText);
+        console.error('❌ Patch error details:', errorJson);
+        throw new Error(`Failed to patch writing section: ${JSON.stringify(errorJson)}`);
+      } catch (parseError) {
+        throw new Error(`Failed to patch writing section: ${errorText}`);
+      }
+    }
+
+    const result = await response.json();
+    console.log('✅ PATCH successful:', result);
+    return result;
+  } else {
+    // JSON format for text-only updates
+    const jsonData: any = {};
+    
+    // Backend needs 'type' to validate the task type
+    if (data.type) {
+      jsonData.type = data.type;
+    }
+    
+    if (data.question) {
+      jsonData.question = data.question;
+    }
+
+    // Use WRITING TASK ID in URL (task1.id or task2.id)
+    const url = `${BASE_URL}/writing-update/${id}/`;
+    console.log('🔄 PATCH (JSON): Partial update for writing section');
+    console.log('   URL:', url);
+    console.log('   Writing Task ID in URL:', id);
+    console.log('   Type in body:', data.type);
+    console.log('   Data:', jsonData);
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(jsonData),
+    });
+
+    console.log('📡 PATCH Response status:', response.status);
+    console.log('📡 PATCH Response OK:', response.ok);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Failed to patch writing section:', response.status, errorText);
+      console.error('❌ Request URL was:', url);
+      console.error('❌ Request method:', 'PATCH');
+      console.error('❌ Request body was:', JSON.stringify(jsonData));
+      
+      try {
+        const errorJson = JSON.parse(errorText);
+        console.error('❌ Patch error details:', errorJson);
+        throw new Error(`Failed to patch writing section: ${JSON.stringify(errorJson)}`);
+      } catch (parseError) {
+        throw new Error(`Failed to patch writing section: ${errorText}`);
+      }
+    }
+
+    const result = await response.json();
+    console.log('✅ PATCH successful:', result);
+    return result;
+  }
 }
 
 // Legacy types for backward compatibility

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { BookOpen, Headphones, PenTool, ChevronLeft, Save, Loader2 } from 'lucide-react';
+import { BookOpen, Headphones, PenTool, ChevronLeft, Save, Loader2, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   getReadingQuestionTypes,
   createReadingPassage,
@@ -48,6 +48,9 @@ export function AddQuestionPage() {
   // Writing tasks state
   const [writingTasks, setWritingTasks] = useState<any[]>([]);
   const [loadingWritingTasks, setLoadingWritingTasks] = useState(false);
+
+  // Accordion state for question groups
+  const [expandedGroups, setExpandedGroups] = useState<number[]>([]);
 
   // Load test details and question types on mount
   useEffect(() => {
@@ -149,10 +152,10 @@ export function AddQuestionPage() {
       setBody(currentPassage.body || '');
 
       // Convert backend groups to frontend format
-      const convertedGroups: QuestionGroup[] = currentPassage.groups.map((group: any) => {
+      const convertedGroups: QuestionGroup[] = (currentPassage.groups || []).map((group: any) => {
         console.log('🔄 Converting group:', group);
         
-        // Backend returns reading_question_type as string, not object
+        // Backend returns reading_question_type as string
         const questionType = typeof group.reading_question_type === 'string' 
           ? group.reading_question_type 
           : group.reading_question_type?.type;
@@ -163,34 +166,33 @@ export function AddQuestionPage() {
           to_value: group.to_value,
         };
 
-        // Convert gap_containers[0] to gap_filling
-        if (group.gap_containers && group.gap_containers.length > 0) {
-          const container = group.gap_containers[0];
+        // ✅ NEW: Backend now returns single objects (not arrays)
+        
+        // Convert gap_containers to gap_filling (now it's an object)
+        if (group.gap_containers) {
           convertedGroup.gap_filling = {
-            title: container.title,
-            principle: container.principle || container.criteria, // Support both old and new field names
-            body: container.body,
+            title: group.gap_containers.title || '',
+            principle: group.gap_containers.principle || group.gap_containers.criteria || 'NMT_TWO',
+            body: group.gap_containers.body || '',
           };
         }
 
-        // Convert identify_info[0] to identify_info
-        if (group.identify_info && group.identify_info.length > 0) {
-          const info = group.identify_info[0];
+        // Convert identify_info (now it's an object)
+        if (group.identify_info) {
           convertedGroup.identify_info = {
-            title: info.title,
-            question: info.question,
+            title: group.identify_info.title || '',
+            question: group.identify_info.question || [],
           };
         }
 
-        // Convert matching[0] to matching_item
-        if (group.matching && group.matching.length > 0) {
-          const match = group.matching[0];
+        // Convert matching (now it's an object)
+        if (group.matching) {
           convertedGroup.matching_item = {
-            title: match.title,
-            statement: match.statement,
-            option: match.option,
-            variant_type: match.variant_type,
-            answer_count: match.answer_count,
+            title: group.matching.title || '',
+            statement: group.matching.statement || [],
+            option: group.matching.option || [],
+            variant_type: group.matching.variant_type || 'letter',
+            answer_count: group.matching.answer_count || 1,
           };
         }
 
@@ -201,6 +203,10 @@ export function AddQuestionPage() {
       console.log('🎯 All converted groups:', convertedGroups);
       setGroups(convertedGroups);
       
+      // Expand all groups when loading existing data
+      const allGroupIndexes = convertedGroups.map((_, index) => index);
+      setExpandedGroups(allGroupIndexes);
+      
       console.log('✅ Groups state updated. Current groups length:', convertedGroups.length);
     } else {
       console.log('❌ No passage found for selectedSubType:', selectedSubType);
@@ -210,6 +216,7 @@ export function AddQuestionPage() {
       setTitle('');
       setBody('');
       setGroups([]);
+      setExpandedGroups([]);
     }
   };
 
@@ -240,6 +247,17 @@ export function AddQuestionPage() {
     };
 
     setGroups([...groups, newGroup]);
+    
+    // Auto-expand new group
+    setExpandedGroups([...expandedGroups, groups.length]);
+  };
+
+  const toggleGroupExpanded = (index: number) => {
+    if (expandedGroups.includes(index)) {
+      setExpandedGroups(expandedGroups.filter(i => i !== index));
+    } else {
+      setExpandedGroups([...expandedGroups, index]);
+    }
   };
 
   const updateGroup = (index: number, updates: Partial<QuestionGroup>) => {
@@ -270,12 +288,36 @@ export function AddQuestionPage() {
 
     setSaving(true);
     try {
+      // Clean up groups before saving - remove empty lines from arrays
+      const cleanedGroups = groups.map(group => {
+        const cleanedGroup = { ...group };
+        
+        // Clean identify_info questions - remove empty strings
+        if (cleanedGroup.identify_info?.question) {
+          cleanedGroup.identify_info = {
+            ...cleanedGroup.identify_info,
+            question: cleanedGroup.identify_info.question.filter(q => q.trim()),
+          };
+        }
+        
+        // Clean matching_item statements and options - remove empty strings
+        if (cleanedGroup.matching_item) {
+          cleanedGroup.matching_item = {
+            ...cleanedGroup.matching_item,
+            statement: (cleanedGroup.matching_item.statement || []).filter(s => s.trim()),
+            option: (cleanedGroup.matching_item.option || []).filter(o => o.trim()),
+          };
+        }
+        
+        return cleanedGroup;
+      });
+
       const data: CreateReadingPassageRequest = {
         reading: readingId,
         passage_type: selectedSubType as PassageType,
         title: title.trim(),
         body: body.trim(),
-        groups: groups,
+        groups: cleanedGroups,
       };
 
       await createReadingPassage(data);
@@ -352,7 +394,10 @@ export function AddQuestionPage() {
 
         <nav className="flex-1 p-4 space-y-2">
           <button
-            onClick={() => setSelectedSection('reading')}
+            onClick={() => {
+              setSelectedSection('reading');
+              setSelectedSubType('passage1'); // Default to passage1 when switching to reading
+            }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
               selectedSection === 'reading'
                 ? 'bg-gradient-to-r from-[#042d62] to-[#0369a1] text-white shadow-lg'
@@ -364,7 +409,10 @@ export function AddQuestionPage() {
           </button>
 
           <button
-            onClick={() => setSelectedSection('listening')}
+            onClick={() => {
+              setSelectedSection('listening');
+              setSelectedSubType('part_1'); // Default to part_1 when switching to listening
+            }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
               selectedSection === 'listening'
                 ? 'bg-gradient-to-r from-[#042d62] to-[#0369a1] text-white shadow-lg'
@@ -376,7 +424,10 @@ export function AddQuestionPage() {
           </button>
 
           <button
-            onClick={() => setSelectedSection('writing')}
+            onClick={() => {
+              setSelectedSection('writing');
+              setSelectedSubType('task1'); // Default to task1 when switching to writing
+            }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
               selectedSection === 'writing'
                 ? 'bg-gradient-to-r from-[#042d62] to-[#0369a1] text-white shadow-lg'
@@ -462,348 +513,461 @@ export function AddQuestionPage() {
 
           {selectedSection === 'reading' && selectedSubType !== 'bulk_passages' && (
             <div className="max-w-5xl mx-auto space-y-8">
-              {/* Passage Title & Body */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
-                <h3 className="text-lg text-slate-900">Passage Ma'lumotlari</h3>
-                
-                <div>
-                  <label className="block text-sm text-slate-700 mb-2">Sarlavha</label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Passage sarlavhasini kiriting"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-slate-700 mb-2">Matn</label>
-                  <textarea
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder="Passage matnini kiriting"
-                    rows={8}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] focus:border-transparent resize-none"
-                  />
-                </div>
-              </div>
-
-              {/* Question Type Selection */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h3 className="text-lg text-slate-900 mb-4">Savol Turini Tanlang</h3>
-                
-                {loading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-[#042d62]" />
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {questionTypes.map((qType) => (
-                      <button
-                        key={qType.id}
-                        onClick={() => addQuestionGroup(qType)}
-                        className="group relative px-4 py-2 border border-slate-200 rounded-lg hover:border-[#042d62] hover:bg-[#042d62] hover:text-white transition-all text-sm"
-                        title={getQuestionTypeDescription(qType.type)}
-                      >
-                        <span className="text-slate-400 group-hover:text-white/70 transition-colors">{qType.id}.</span>{' '}
-                        <span className="text-slate-700 group-hover:text-white transition-colors">{getQuestionTypeLabel(qType.type)}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Added Question Groups */}
-              {groups.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                  <h3 className="text-lg text-slate-900 mb-4">Qo'shilgan Savol Guruhlari</h3>
-                  
-                  <div className="space-y-6">
-                    {groups.map((group, index) => {
-                      const qType = questionTypes.find(qt => qt.type === group.question_type);
-                      const questionTypeName = qType?.type || group.question_type;
-                      
-                      // Determine which fields to show based on question type
-                      const isGapFilling = ['sentence_completion', 'summary_completion', 'table_completion', 'flowchart_completion', 'diagram_labeling', 'short_answer'].includes(questionTypeName);
-                      const isIdentifyInfo = ['matching_information', 'true_false_not_given', 'yes_no_not_given'].includes(questionTypeName);
-                      const isMatchingItem = ['matching_headings', 'matching_sentence_endings', 'matching_features', 'multiple_choice'].includes(questionTypeName);
-                      
-                      return (
-                        <div key={index} className="p-6 bg-slate-50 rounded-xl border-2 border-slate-200 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-slate-900">
-                              {qType ? getQuestionTypeLabel(qType.type) : group.question_type}
-                            </h4>
-                            <button
-                              onClick={() => removeGroup(index)}
-                              className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
-                            >
-                              O'chirish
-                            </button>
-                          </div>
-                          
-                          {/* From/To Values */}
-                          <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2">
-                              <label className="text-sm text-slate-600">Dan:</label>
-                              <input
-                                type="number"
-                                value={group.from_value}
-                                onChange={(e) => updateGroup(index, { from_value: parseInt(e.target.value) || 0 })}
-                                className="w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                                min="1"
-                              />
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <label className="text-sm text-slate-600">Gacha:</label>
-                              <input
-                                type="number"
-                                value={group.to_value}
-                                onChange={(e) => updateGroup(index, { to_value: parseInt(e.target.value) || 0 })}
-                                className="w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                                min={group.from_value}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Gap Filling Fields */}
-                          {isGapFilling && (
-                            <div className="space-y-4 pt-4 border-t border-slate-300">
-                              <div>
-                                <label className="block text-sm text-slate-700 mb-2">Savol Sarlavhasi</label>
-                                <input
-                                  type="text"
-                                  value={group.gap_filling?.title || ''}
-                                  onChange={(e) => updateGroup(index, {
-                                    gap_filling: {
-                                      ...group.gap_filling,
-                                      title: e.target.value,
-                                      principle: group.gap_filling?.principle || 'NMT_TWO',
-                                      body: group.gap_filling?.body || '',
-                                    }
-                                  })}
-                                  placeholder="Masalan: Complete the sentences"
-                                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="block text-sm text-slate-700 mb-2">So'z Cheklovi</label>
-                                <select
-                                  value={group.gap_filling?.principle || 'NMT_TWO'}
-                                  onChange={(e) => updateGroup(index, {
-                                    gap_filling: {
-                                      ...group.gap_filling,
-                                      title: group.gap_filling?.title || '',
-                                      principle: e.target.value as any,
-                                      body: group.gap_filling?.body || '',
-                                    }
-                                  })}
-                                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                                >
-                                  {Object.entries(GAP_FILLING_CRITERIA).map(([key, { value, label }]) => (
-                                    <option key={value} value={value}>
-                                      {label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div>
-                                <label className="block text-sm text-slate-700 mb-2">Savol Matni</label>
-                                <textarea
-                                  value={group.gap_filling?.body || ''}
-                                  onChange={(e) => updateGroup(index, {
-                                    gap_filling: {
-                                      ...group.gap_filling,
-                                      title: group.gap_filling?.title || '',
-                                      principle: group.gap_filling?.principle || 'NMT_TWO',
-                                      body: e.target.value,
-                                    }
-                                  })}
-                                  placeholder="Savol matnini kiriting..."
-                                  rows={4}
-                                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
-                                />
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Identify Info Fields */}
-                          {isIdentifyInfo && (
-                            <div className="space-y-4 pt-4 border-t border-slate-300">
-                              <div>
-                                <label className="block text-sm text-slate-700 mb-2">Savol Sarlavhasi</label>
-                                <input
-                                  type="text"
-                                  value={group.identify_info?.title || ''}
-                                  onChange={(e) => updateGroup(index, {
-                                    identify_info: {
-                                      title: e.target.value,
-                                      question: group.identify_info?.question || [''],
-                                    }
-                                  })}
-                                  placeholder="Masalan: Do the following statements agree with..."
-                                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="block text-sm text-slate-700 mb-2">Savollar (har bir qatorda bittadan)</label>
-                                <textarea
-                                  value={(group.identify_info?.question || ['']).join('\n')}
-                                  onChange={(e) => updateGroup(index, {
-                                    identify_info: {
-                                      title: group.identify_info?.title || '',
-                                      question: e.target.value.split('\n').filter(q => q.trim()),
-                                    }
-                                  })}
-                                  placeholder="Har bir savolni yangi qatordan yozing..."
-                                  rows={6}
-                                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
-                                />
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Matching Item Fields */}
-                          {isMatchingItem && (
-                            <div className="space-y-4 pt-4 border-t border-slate-300">
-                              <div>
-                                <label className="block text-sm text-slate-700 mb-2">Savol Sarlavhasi</label>
-                                <input
-                                  type="text"
-                                  value={group.matching_item?.title || ''}
-                                  onChange={(e) => updateGroup(index, {
-                                    matching_item: {
-                                      ...group.matching_item,
-                                      title: e.target.value,
-                                      statement: group.matching_item?.statement || [''],
-                                      option: group.matching_item?.option || [''],
-                                      variant_type: group.matching_item?.variant_type || 'letter',
-                                      answer_count: group.matching_item?.answer_count || 1,
-                                    }
-                                  })}
-                                  placeholder="Masalan: Match each heading with..."
-                                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                                />
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-sm text-slate-700 mb-2">Savollar (har qatorda bittadan)</label>
-                                  <textarea
-                                    value={(group.matching_item?.statement || ['']).join('\n')}
-                                    onChange={(e) => updateGroup(index, {
-                                      matching_item: {
-                                        ...group.matching_item,
-                                        title: group.matching_item?.title || '',
-                                        statement: e.target.value.split('\n').filter(s => s.trim()),
-                                        option: group.matching_item?.option || [''],
-                                        variant_type: group.matching_item?.variant_type || 'letter',
-                                        answer_count: group.matching_item?.answer_count || 1,
-                                      }
-                                    })}
-                                    placeholder="1. First statement\n2. Second statement"
-                                    rows={5}
-                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
-                                  />
-                                </div>
-
-                                <div>
-                                  <label className="block text-sm text-slate-700 mb-2">Variantlar (har qatorda bittadan)</label>
-                                  <textarea
-                                    value={(group.matching_item?.option || ['']).join('\n')}
-                                    onChange={(e) => updateGroup(index, {
-                                      matching_item: {
-                                        ...group.matching_item,
-                                        title: group.matching_item?.title || '',
-                                        statement: group.matching_item?.statement || [''],
-                                        option: e.target.value.split('\n').filter(o => o.trim()),
-                                        variant_type: group.matching_item?.variant_type || 'letter',
-                                        answer_count: group.matching_item?.answer_count || 1,
-                                      }
-                                    })}
-                                    placeholder="A. First option\nB. Second option"
-                                    rows={5}
-                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-sm text-slate-700 mb-2">Variant Turi</label>
-                                  <select
-                                    value={group.matching_item?.variant_type || 'letter'}
-                                    onChange={(e) => updateGroup(index, {
-                                      matching_item: {
-                                        ...group.matching_item,
-                                        title: group.matching_item?.title || '',
-                                        statement: group.matching_item?.statement || [''],
-                                        option: group.matching_item?.option || [''],
-                                        variant_type: e.target.value as any,
-                                        answer_count: group.matching_item?.answer_count || 1,
-                                      }
-                                    })}
-                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                                  >
-                                    <option value="letter">Alifbo (A, B, C)</option>
-                                    <option value="romain">Rim raqamlari (I, II, III)</option>
-                                    <option value="number">Raqamlar (1, 2, 3)</option>
-                                  </select>
-                                </div>
-
-                                <div>
-                                  <label className="block text-sm text-slate-700 mb-2">Javoblar Soni</label>
-                                  <input
-                                    type="number"
-                                    value={group.matching_item?.answer_count || 1}
-                                    onChange={(e) => updateGroup(index, {
-                                      matching_item: {
-                                        ...group.matching_item,
-                                        title: group.matching_item?.title || '',
-                                        statement: group.matching_item?.statement || [''],
-                                        option: group.matching_item?.option || [''],
-                                        variant_type: group.matching_item?.variant_type || 'letter',
-                                        answer_count: parseInt(e.target.value) || 1,
-                                      }
-                                    })}
-                                    min="1"
-                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+              {/* Loading Indicator */}
+              {loadingPassages && (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-12 h-12 animate-spin text-[#042d62] mb-4" />
+                    <p className="text-slate-600">Passage ma'lumotlari yuklanmoqda...</p>
                   </div>
                 </div>
               )}
 
-              {/* Save Button */}
-              <div className="flex justify-end">
-                <button
-                  onClick={handleSave}
-                  disabled={saving || !title.trim() || !body.trim() || groups.length === 0}
-                  className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#042d62] to-[#0369a1] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Saqlanmoqda...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-5 h-5" />
-                      <span>Saqlash</span>
-                    </>
+              {!loadingPassages && (
+                <>
+                  {/* Passage Title & Body */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
+                    <h3 className="text-lg text-slate-900">Passage Ma'lumotlari</h3>
+                    
+                    <div>
+                      <label className="block text-sm text-slate-700 mb-2">Sarlavha</label>
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="Passage sarlavhasini kiriting"
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] focus:border-transparent"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-slate-700 mb-2">Matn</label>
+                      <textarea
+                        value={body}
+                        onChange={(e) => setBody(e.target.value)}
+                        placeholder="Passage matnini kiriting"
+                        rows={8}
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] focus:border-transparent resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Question Type Selection */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg text-slate-900">Savol Turini Tanlang</h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allExpanded = groups.map((_, i) => i);
+                          if (expandedGroups.length === groups.length) {
+                            setExpandedGroups([]);
+                          } else {
+                            setExpandedGroups(allExpanded);
+                          }
+                        }}
+                        className="text-sm text-[#042d62] hover:underline"
+                      >
+                        {expandedGroups.length === groups.length ? 'Hammasini yopish' : 'Hammasini ochish'}
+                      </button>
+                    </div>
+
+                    {groups.length > 0 && (
+                      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-900">
+                          💡 <strong>Maslahat:</strong> Bir xil savol turini bir necha marta qo'shishingiz mumkin. Har bir guruh mustaqil.
+                        </p>
+                      </div>
+                    )}
+                    
+                    {loading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="w-8 h-8 animate-spin text-[#042d62]" />
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {questionTypes.map((qType) => (
+                          <button
+                            key={qType.id}
+                            type="button"
+                            onClick={() => addQuestionGroup(qType)}
+                            className="group relative px-4 py-2 border border-slate-200 rounded-lg hover:border-[#042d62] hover:bg-[#042d62] hover:text-white transition-all text-sm"
+                            title={getQuestionTypeDescription(qType.type)}
+                          >
+                            <span className="text-slate-400 group-hover:text-white/70 transition-colors">{qType.id}.</span>{' '}
+                            <span className="text-slate-700 group-hover:text-white transition-colors">{getQuestionTypeLabel(qType.type)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Added Question Groups */}
+                  {groups.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                      <h3 className="text-lg text-slate-900 mb-4">Qo'shilgan Savol Guruhlari</h3>
+                      
+                      <div className="space-y-6">
+                        {groups.map((group, index) => {
+                          const qType = questionTypes.find(qt => qt.type === group.question_type);
+                          const questionTypeName = qType?.type || group.question_type;
+                          const isExpanded = expandedGroups.includes(index);
+                          
+                          // Determine which fields to show based on question type
+                          const isGapFilling = ['sentence_completion', 'summary_completion', 'table_completion', 'flowchart_completion', 'diagram_labeling', 'short_answer'].includes(questionTypeName);
+                          const isIdentifyInfo = ['matching_information', 'true_false_not_given', 'yes_no_not_given'].includes(questionTypeName);
+                          const isMatchingItem = ['matching_headings', 'matching_sentence_endings', 'matching_features', 'multiple_choice'].includes(questionTypeName);
+                          
+                          return (
+                            <div key={index} className="border border-slate-200 rounded-lg overflow-hidden">
+                              {/* Group Header - Clickable */}
+                              <div 
+                                onClick={() => toggleGroupExpanded(index)}
+                                className="bg-slate-50 p-4 flex items-center justify-between cursor-pointer hover:bg-slate-100 transition-colors"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <button
+                                    type="button"
+                                    className="p-1 hover:bg-slate-200 rounded transition-colors"
+                                  >
+                                    {isExpanded ? (
+                                      <ChevronUp className="w-4 h-4 text-slate-600" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4 text-slate-600" />
+                                    )}
+                                  </button>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="text-sm">
+                                        <strong>Guruh {index + 1}</strong>
+                                      </p>
+                                      {group.from_value > 0 && group.to_value > 0 && (
+                                        <span className="text-xs px-2 py-1 bg-[#042d62] text-white rounded">
+                                          Q{group.from_value}-{group.to_value}
+                                        </span>
+                                      )}
+                                      {group.question_type && (
+                                        <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                                          {getQuestionTypeLabel(group.question_type)}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeGroup(index);
+                                  }}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors ml-2"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              {/* Group Content - Collapsible */}
+                              {isExpanded && (
+                                <div className="p-4 bg-white space-y-4">
+                                  {/* Question Type Selector */}
+                                  <div>
+                                    <label className="block text-sm text-slate-700 mb-2">
+                                      Savol Turi <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                      value={group.question_type}
+                                      onChange={(e) => {
+                                        // Clear existing type-specific data when changing type
+                                        updateGroup(index, { 
+                                          question_type: e.target.value,
+                                          gap_filling: undefined,
+                                          identify_info: undefined,
+                                          matching_item: undefined,
+                                        });
+                                      }}
+                                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
+                                      required
+                                    >
+                                      <option value="">Tanlang...</option>
+                                      {questionTypes.map((qType) => (
+                                        <option key={qType.id} value={qType.type}>
+                                          {getQuestionTypeLabel(qType.type)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {/* From/To Values */}
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <label className="block text-sm text-slate-700 mb-2">
+                                        Dan <span className="text-red-500">*</span>
+                                      </label>
+                                      <input
+                                        type="number"
+                                        value={group.from_value}
+                                        onChange={(e) => updateGroup(index, { from_value: parseInt(e.target.value) || 0 })}
+                                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                        min="1"
+                                        required
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm text-slate-700 mb-2">
+                                        Gacha <span className="text-red-500">*</span>
+                                      </label>
+                                      <input
+                                        type="number"
+                                        value={group.to_value}
+                                        onChange={(e) => updateGroup(index, { to_value: parseInt(e.target.value) || 0 })}
+                                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                        min={group.from_value}
+                                        required
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Gap Filling Fields */}
+                                  {isGapFilling && (
+                                    <div className="space-y-4 pt-4 border-t border-slate-300">
+                                      <div>
+                                        <label className="block text-sm text-slate-700 mb-2">Savol Sarlavhasi</label>
+                                        <input
+                                          type="text"
+                                          value={group.gap_filling?.title || ''}
+                                          onChange={(e) => updateGroup(index, {
+                                            gap_filling: {
+                                              ...group.gap_filling,
+                                              title: e.target.value,
+                                              principle: group.gap_filling?.principle || 'NMT_TWO',
+                                              body: group.gap_filling?.body || '',
+                                            }
+                                          })}
+                                          placeholder="Masalan: Complete the sentences"
+                                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="block text-sm text-slate-700 mb-2">So'z Cheklovi</label>
+                                        <select
+                                          value={group.gap_filling?.principle || 'NMT_TWO'}
+                                          onChange={(e) => updateGroup(index, {
+                                            gap_filling: {
+                                              ...group.gap_filling,
+                                              title: group.gap_filling?.title || '',
+                                              principle: e.target.value as any,
+                                              body: group.gap_filling?.body || '',
+                                            }
+                                          })}
+                                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                        >
+                                          {Object.entries(GAP_FILLING_CRITERIA).map(([key, { value, label }]) => (
+                                            <option key={value} value={value}>
+                                              {label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      <div>
+                                        <label className="block text-sm text-slate-700 mb-2">Savol Matni</label>
+                                        <textarea
+                                          value={group.gap_filling?.body || ''}
+                                          onChange={(e) => updateGroup(index, {
+                                            gap_filling: {
+                                              ...group.gap_filling,
+                                              title: group.gap_filling?.title || '',
+                                              principle: group.gap_filling?.principle || 'NMT_TWO',
+                                              body: e.target.value,
+                                            }
+                                          })}
+                                          placeholder="Savol matnini kiriting..."
+                                          rows={4}
+                                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Identify Info Fields */}
+                                  {isIdentifyInfo && (
+                                    <div className="space-y-4 pt-4 border-t border-slate-300">
+                                      <div>
+                                        <label className="block text-sm text-slate-700 mb-2">Savol Sarlavhasi</label>
+                                        <input
+                                          type="text"
+                                          value={group.identify_info?.title || ''}
+                                          onChange={(e) => updateGroup(index, {
+                                            identify_info: {
+                                              title: e.target.value,
+                                              question: group.identify_info?.question || [''],
+                                            }
+                                          })}
+                                          placeholder="Masalan: Do the following statements agree with..."
+                                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="block text-sm text-slate-700 mb-2">Savollar (har bir qatorda bittadan)</label>
+                                        <textarea
+                                          value={(group.identify_info?.question || ['']).join('\n')}
+                                          onChange={(e) => updateGroup(index, {
+                                            identify_info: {
+                                              title: group.identify_info?.title || '',
+                                              question: e.target.value.split('\n'), // ✅ Remove .filter() to allow Enter key
+                                            }
+                                          })}
+                                          placeholder="Har bir savolni yangi qatordan yozing..."
+                                          rows={6}
+                                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Matching Item Fields */}
+                                  {isMatchingItem && (
+                                    <div className="space-y-4 pt-4 border-t border-slate-300">
+                                      <div>
+                                        <label className="block text-sm text-slate-700 mb-2">Savol Sarlavhasi</label>
+                                        <input
+                                          type="text"
+                                          value={group.matching_item?.title || ''}
+                                          onChange={(e) => updateGroup(index, {
+                                            matching_item: {
+                                              ...group.matching_item,
+                                              title: e.target.value,
+                                              statement: group.matching_item?.statement || [''],
+                                              option: group.matching_item?.option || [''],
+                                              variant_type: group.matching_item?.variant_type || 'letter',
+                                              answer_count: group.matching_item?.answer_count || 1,
+                                            }
+                                          })}
+                                          placeholder="Masalan: Match each heading with..."
+                                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                        />
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                          <label className="block text-sm text-slate-700 mb-2">Savollar (har qatorda bittadan)</label>
+                                          <textarea
+                                            value={(group.matching_item?.statement || ['']).join('\n')}
+                                            onChange={(e) => updateGroup(index, {
+                                              matching_item: {
+                                                ...group.matching_item,
+                                                title: group.matching_item?.title || '',
+                                                statement: e.target.value.split('\n').filter(s => s.trim()),
+                                                option: group.matching_item?.option || [''],
+                                                variant_type: group.matching_item?.variant_type || 'letter',
+                                                answer_count: group.matching_item?.answer_count || 1,
+                                              }
+                                            })}
+                                            placeholder="1. First statement\n2. Second statement"
+                                            rows={5}
+                                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
+                                          />
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-sm text-slate-700 mb-2">Variantlar (har qatorda bittadan)</label>
+                                          <textarea
+                                            value={(group.matching_item?.option || ['']).join('\n')}
+                                            onChange={(e) => updateGroup(index, {
+                                              matching_item: {
+                                                ...group.matching_item,
+                                                title: group.matching_item?.title || '',
+                                                statement: group.matching_item?.statement || [''],
+                                                option: e.target.value.split('\n').filter(o => o.trim()),
+                                                variant_type: group.matching_item?.variant_type || 'letter',
+                                                answer_count: group.matching_item?.answer_count || 1,
+                                              }
+                                            })}
+                                            placeholder="A. First option\nB. Second option"
+                                            rows={5}
+                                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
+                                          />
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                          <label className="block text-sm text-slate-700 mb-2">Variant Turi</label>
+                                          <select
+                                            value={group.matching_item?.variant_type || 'letter'}
+                                            onChange={(e) => updateGroup(index, {
+                                              matching_item: {
+                                                ...group.matching_item,
+                                                title: group.matching_item?.title || '',
+                                                statement: group.matching_item?.statement || [''],
+                                                option: group.matching_item?.option || [''],
+                                                variant_type: e.target.value as any,
+                                                answer_count: group.matching_item?.answer_count || 1,
+                                              }
+                                            })}
+                                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                          >
+                                            <option value="letter">Alifbo (A, B, C)</option>
+                                            <option value="romain">Rim raqamlari (I, II, III)</option>
+                                            <option value="number">Raqamlar (1, 2, 3)</option>
+                                          </select>
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-sm text-slate-700 mb-2">Javoblar Soni</label>
+                                          <input
+                                            type="number"
+                                            value={group.matching_item?.answer_count || 1}
+                                            onChange={(e) => updateGroup(index, {
+                                              matching_item: {
+                                                ...group.matching_item,
+                                                title: group.matching_item?.title || '',
+                                                statement: group.matching_item?.statement || [''],
+                                                option: group.matching_item?.option || [''],
+                                                variant_type: group.matching_item?.variant_type || 'letter',
+                                                answer_count: parseInt(e.target.value) || 1,
+                                              }
+                                            })}
+                                            min="1"
+                                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
-                </button>
-              </div>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleSave}
+                      disabled={saving || !title.trim() || !body.trim() || groups.length === 0}
+                      className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#042d62] to-[#0369a1] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {saving ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <span>Saqlanmoqda...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-5 h-5" />
+                          <span>Saqlash</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

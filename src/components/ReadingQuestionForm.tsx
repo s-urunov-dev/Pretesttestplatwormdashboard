@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, ChevronDown, ChevronUp } from 'lucide-react';
 import { 
   QuestionGroup, 
@@ -6,7 +6,9 @@ import {
   createReadingPassage, 
   createReading,
   PassageType,
-  CriteriaType 
+  CriteriaType,
+  getReadingQuestionTypes,
+  QuestionType
 } from '../lib/api';
 
 interface ReadingQuestionFormProps {
@@ -22,27 +24,64 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
   const [questionGroups, setQuestionGroups] = useState<QuestionGroup[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<string[]>(['0']);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([]);
+  const [loadingQuestionTypes, setLoadingQuestionTypes] = useState(true);
+
+  // Load question types from API
+  useEffect(() => {
+    const fetchQuestionTypes = async () => {
+      try {
+        setLoadingQuestionTypes(true);
+        const types = await getReadingQuestionTypes();
+        console.log('✅ Loaded question types from API:', types);
+        setQuestionTypes(types);
+      } catch (error) {
+        console.error('❌ Failed to load question types:', error);
+        // Fallback to empty array - user will see loading message
+        setQuestionTypes([]);
+      } finally {
+        setLoadingQuestionTypes(false);
+      }
+    };
+
+    fetchQuestionTypes();
+  }, []);
 
   // Log criteria to debug
   console.log('GAP_FILLING_CRITERIA:', GAP_FILLING_CRITERIA);
   console.log('Number of criteria:', Object.keys(GAP_FILLING_CRITERIA).length);
 
-  // Reading question types mapping
-  const readingQuestionTypes = [
-    { value: 'multiple_choice', label: 'Multiple Choice' },
-    { value: 'true_false_not_given', label: 'True / False / Not Given' },
-    { value: 'yes_no_not_given', label: 'Yes / No / Not Given' },
-    { value: 'matching_headings', label: 'Matching Headings' },
-    { value: 'matching_information', label: 'Matching Information' },
-    { value: 'matching_sentence_endings', label: 'Matching Sentence Endings' },
-    { value: 'matching_features', label: 'Matching Features' },
-    { value: 'sentence_completion', label: 'Sentence Completion' },
-    { value: 'summary_completion', label: 'Summary Completion' },
-    { value: 'table_completion', label: 'Table Completion' },
-    { value: 'flowchart_completion', label: 'Flow-chart Completion' },
-    { value: 'diagram_labeling', label: 'Diagram Labelling' },
-    { value: 'short_answer', label: 'Short Answer Questions' },
-  ];
+  // Helper function to determine question type category based on API type
+  const getQuestionTypeCategory = (questionType: string): 'identify_info' | 'gap_filling' | 'matching_item' | null => {
+    if (!questionType) return null;
+
+    const type = questionType.toLowerCase();
+
+    // Identify Info types (True/False/Not Given, Yes/No/Not Given)
+    if (type.includes('true') || type.includes('false') || 
+        type.includes('yes') || type.includes('no') || 
+        type.includes('not_given') || type.includes('notgiven')) {
+      return 'identify_info';
+    }
+
+    // Gap Filling types (Sentence/Summary/Table/Note Completion, Short Answer)
+    if (type.includes('completion') || type.includes('complete') ||
+        type.includes('sentence') || type.includes('summary') ||
+        type.includes('table') || type.includes('note') ||
+        type.includes('flowchart') || type.includes('flow') ||
+        type.includes('diagram') || type.includes('short_answer') ||
+        type.includes('fill')) {
+      return 'gap_filling';
+    }
+
+    // Matching types (Matching Headings, Features, Information, Sentence Endings)
+    if (type.includes('matching') || type.includes('match')) {
+      return 'matching_item';
+    }
+
+    // Default to gap_filling for unknown types
+    return 'gap_filling';
+  };
 
   const addQuestionGroup = () => {
     const newId = questionGroups.length.toString();
@@ -195,16 +234,12 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
 
           {questionGroups.map((group, index) => {
             const isExpanded = expandedGroups.includes(index.toString());
-            const isIdentifyInfo = 
-              group.question_type === 'true_false_not_given' || 
-              group.question_type === 'yes_no_not_given';
-            const isGapFilling = 
-              group.question_type === 'sentence_completion' || 
-              group.question_type === 'summary_completion' ||
-              group.question_type === 'table_completion' ||
-              group.question_type === 'flowchart_completion' ||
-              group.question_type === 'diagram_labeling' ||
-              group.question_type === 'short_answer';
+            
+            // Determine form type dynamically based on API question type
+            const formCategory = getQuestionTypeCategory(group.question_type);
+            const isIdentifyInfo = formCategory === 'identify_info';
+            const isGapFilling = formCategory === 'gap_filling';
+            const isMatchingItem = formCategory === 'matching_item';
 
             return (
               <div
@@ -236,7 +271,7 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                       </p>
                       {group.question_type && (
                         <p className="text-sm text-slate-600">
-                          {readingQuestionTypes.find(t => t.value === group.question_type)?.label}
+                          {questionTypes.find(t => t.type === group.question_type)?.type || group.question_type}
                         </p>
                       )}
                     </div>
@@ -267,11 +302,15 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                         required
                       >
                         <option value="">Tanlang...</option>
-                        {readingQuestionTypes.map((type) => (
-                          <option key={type.value} value={type.value}>
-                            {type.label}
-                          </option>
-                        ))}
+                        {loadingQuestionTypes ? (
+                          <option value="loading">Yuklanmoqda...</option>
+                        ) : (
+                          questionTypes.map((qt) => (
+                            <option key={qt.id} value={qt.type}>
+                              {qt.type}
+                            </option>
+                          ))
+                        )}
                       </select>
                     </div>
 
@@ -437,6 +476,138 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                           />
                           <p className="text-sm text-slate-500 mt-2">
                             Bo&apos;sh joylarni (7), (8), (9) kabi raqamlar bilan belgilang
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Matching Item Fields */}
+                    {isMatchingItem && (
+                      <div className="space-y-4 border-t pt-4">
+                        <div>
+                          <label className="block text-slate-700 mb-2">
+                            Sarlavha <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={group.matching_item?.title || ''}
+                            onChange={(e) => updateQuestionGroup(index, {
+                              matching_item: {
+                                title: e.target.value,
+                                statement: group.matching_item?.statement || [],
+                                option: group.matching_item?.option || [],
+                                variant_type: group.matching_item?.variant_type || 'letter',
+                                answer_count: group.matching_item?.answer_count || 1,
+                              }
+                            })}
+                            placeholder="Masalan: Match the following headings to paragraphs"
+                            className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
+                            required
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-slate-700 mb-2">
+                              Variant Turi <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              value={group.matching_item?.variant_type || 'letter'}
+                              onChange={(e) => updateQuestionGroup(index, {
+                                matching_item: {
+                                  title: group.matching_item?.title || '',
+                                  statement: group.matching_item?.statement || [],
+                                  option: group.matching_item?.option || [],
+                                  variant_type: e.target.value as 'letter' | 'number' | 'romain',
+                                  answer_count: group.matching_item?.answer_count || 1,
+                                }
+                              })}
+                              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
+                              required
+                            >
+                              <option value="letter">Harflar (A, B, C...)</option>
+                              <option value="number">Raqamlar (1, 2, 3...)</option>
+                              <option value="romain">Rim raqamlari (I, II, III...)</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-700 mb-2">
+                              Javoblar Soni <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={group.matching_item?.answer_count || 1}
+                              onChange={(e) => updateQuestionGroup(index, {
+                                matching_item: {
+                                  title: group.matching_item?.title || '',
+                                  statement: group.matching_item?.statement || [],
+                                  option: group.matching_item?.option || [],
+                                  variant_type: group.matching_item?.variant_type || 'letter',
+                                  answer_count: parseInt(e.target.value) || 1,
+                                }
+                              })}
+                              placeholder="1"
+                              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-700 mb-2">
+                            Statements (har bir qator alohida) <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            value={(group.matching_item?.statement || []).join('\n')}
+                            onChange={(e) => {
+                              const statements = e.target.value.split('\n').filter(s => s.trim());
+                              updateQuestionGroup(index, {
+                                matching_item: {
+                                  title: group.matching_item?.title || '',
+                                  statement: statements,
+                                  option: group.matching_item?.option || [],
+                                  variant_type: group.matching_item?.variant_type || 'letter',
+                                  answer_count: group.matching_item?.answer_count || 1,
+                                }
+                              });
+                            }}
+                            placeholder="The role of technology in education&#10;Environmental impact of urbanization&#10;Benefits of renewable energy"
+                            rows={5}
+                            className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50 resize-none font-mono text-sm"
+                            required
+                          />
+                          <p className="text-sm text-slate-500 mt-2">
+                            Har bir statement ni yangi qatordan kiriting
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-700 mb-2">
+                            Options/Variantlar (har bir qator alohida) <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            value={(group.matching_item?.option || []).join('\n')}
+                            onChange={(e) => {
+                              const options = e.target.value.split('\n').filter(o => o.trim());
+                              updateQuestionGroup(index, {
+                                matching_item: {
+                                  title: group.matching_item?.title || '',
+                                  statement: group.matching_item?.statement || [],
+                                  option: options,
+                                  variant_type: group.matching_item?.variant_type || 'letter',
+                                  answer_count: group.matching_item?.answer_count || 1,
+                                }
+                              });
+                            }}
+                            placeholder="Paragraph A&#10;Paragraph B&#10;Paragraph C&#10;Paragraph D"
+                            rows={5}
+                            className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50 resize-none font-mono text-sm"
+                            required
+                          />
+                          <p className="text-sm text-slate-500 mt-2">
+                            Har bir option ni yangi qatordan kiriting
                           </p>
                         </div>
                       </div>
