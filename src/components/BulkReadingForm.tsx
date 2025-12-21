@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Plus, Trash2, Save, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   QuestionGroup,
@@ -10,6 +10,8 @@ import {
   CriteriaType,
   VariantType
 } from '../lib/api';
+import { TableCompletionEditor, TableCompletionData } from './TableCompletionEditor';
+import { deserializeTableData, serializeTableData } from '../lib/tableCompletionHelper';
 
 interface PassageData {
   title: string;
@@ -237,55 +239,99 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
             />
           </div>
 
-          <div>
-            <label className="block text-slate-700 mb-2">
-              Javob Formati (Principle) <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={group.gap_filling?.principle || ''}
-              onChange={(e) => {
-                updateQuestionGroup(passageIndex, groupIndex, {
-                  gap_filling: {
-                    title: group.gap_filling?.title || '',
-                    principle: e.target.value as CriteriaType,
-                    body: group.gap_filling?.body || '',
+          {/* Table Completion or Regular Gap Filling */}
+          {group.question_type === 'table_completion' ? (
+            <div>
+              <label className="block text-slate-700 mb-2">
+                Table Tuzilishi <span className="text-red-500">*</span>
+              </label>
+              <TableCompletionEditor
+                data={(() => {
+                  try {
+                    const parsed = JSON.parse(group.gap_filling?.body || '{}');
+                    return {
+                      principle: group.gap_filling?.principle || 'NMT_TWO',
+                      instruction: parsed.instruction,
+                      rows: parsed.rows || [],
+                      questionNumberStart: group.from_value,
+                    };
+                  } catch {
+                    return {
+                      principle: group.gap_filling?.principle || 'NMT_TWO',
+                      rows: [],
+                      questionNumberStart: group.from_value,
+                    };
                   }
-                });
-              }}
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
-              required
-            >
-              <option value="">Tanlang...</option>
-              {Object.entries(GAP_FILLING_CRITERIA).map(([key, { value, label }]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
+                })()}
+                onChange={(tableData) => {
+                  updateQuestionGroup(passageIndex, groupIndex, {
+                    gap_filling: {
+                      ...group.gap_filling,
+                      title: group.gap_filling?.title || '',
+                      principle: tableData.principle,
+                      body: JSON.stringify({
+                        instruction: tableData.instruction,
+                        rows: tableData.rows,
+                      }),
+                    },
+                  });
+                }}
+                mode="edit"
+              />
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-slate-700 mb-2">
+                  Javob Formati (Principle) <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={group.gap_filling?.principle || ''}
+                  onChange={(e) => {
+                    updateQuestionGroup(passageIndex, groupIndex, {
+                      gap_filling: {
+                        title: group.gap_filling?.title || '',
+                        principle: e.target.value as CriteriaType,
+                        body: group.gap_filling?.body || '',
+                      }
+                    });
+                  }}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
+                  required
+                >
+                  <option value="">Tanlang...</option>
+                  {Object.entries(GAP_FILLING_CRITERIA).map(([key, { value, label }]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          <div>
-            <label className="block text-slate-700 mb-2">
-              Matn (bo&apos;sh joylar uchun raqamlarni qavs ichida yozing) <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              value={group.gap_filling?.body || ''}
-              onChange={(e) => updateQuestionGroup(passageIndex, groupIndex, {
-                gap_filling: {
-                  title: group.gap_filling?.title || '',
-                  principle: group.gap_filling?.principle || 'NMT_TWO',
-                  body: e.target.value,
-                }
-              })}
-              placeholder="Mindfulness has been proven to have a positive impact on people's wellbeing. One study in 2013 showed patients responding positively to (7) involving mindfulness..."
-              rows={8}
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50 resize-none font-mono text-sm"
-              required
-            />
-            <p className="text-sm text-slate-500 mt-2">
-              Bo&apos;sh joylarni (7), (8), (9) kabi raqamlar bilan belgilang
-            </p>
-          </div>
+              <div>
+                <label className="block text-slate-700 mb-2">
+                  Matn (bo&apos;sh joylar uchun raqamlarni qavs ichida yozing) <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={group.gap_filling?.body || ''}
+                  onChange={(e) => updateQuestionGroup(passageIndex, groupIndex, {
+                    gap_filling: {
+                      title: group.gap_filling?.title || '',
+                      principle: group.gap_filling?.principle || 'NMT_TWO',
+                      body: e.target.value,
+                    }
+                  })}
+                  placeholder="Mindfulness has been proven to have a positive impact on people's wellbeing. One study in 2013 showed patients responding positively to (7) involving mindfulness..."
+                  rows={8}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50 resize-none font-mono text-sm"
+                  required
+                />
+                <p className="text-sm text-slate-500 mt-2">
+                  Bo&apos;sh joylarni (7), (8), (9) kabi raqamlar bilan belgilang
+                </p>
+              </div>
+            </>
+          )}
         </div>
       );
     }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Plus, Trash2, Save, ChevronDown, ChevronUp, Upload, Image as ImageIcon, X } from 'lucide-react';
 import { Question } from './QuestionPanel';
 import { QuestionGroupForm } from './QuestionGroupForm';

@@ -1,14 +1,19 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, Headphones, PenTool, ChevronLeft, Save, Loader2, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   getReadingQuestionTypes,
+  getListeningQuestionTypes,
   createReadingPassage,
   getReadingPassages,
+  getListeningParts,
+  createListeningPartWithQuestions,
   QuestionType,
   CreateReadingPassageRequest,
+  CreateListeningPartRequest,
   QuestionGroup,
   PassageType,
+  PartType,
   GAP_FILLING_CRITERIA,
   getTestDetail,
   CriteriaType,
@@ -18,6 +23,7 @@ import {
 } from '../lib/api';
 import { BulkReadingForm } from '../components/BulkReadingForm';
 import { WritingForm } from '../components/WritingForm';
+import { ListeningForm } from '../components/ListeningForm';
 
 type SectionType = 'reading' | 'listening' | 'writing';
 type SubType = 'passage1' | 'passage2' | 'passage3' | 'part_1' | 'part_2' | 'part_3' | 'part_4' | 'task1' | 'task2' | 'bulk_passages';
@@ -44,6 +50,11 @@ export function AddQuestionPage() {
   const [body, setBody] = useState('');
   const [groups, setGroups] = useState<QuestionGroup[]>([]);
   const [passages, setPassages] = useState<any[]>([]);
+  
+  // Listening parts state (similar to passages)
+  const [parts, setParts] = useState<any[]>([]);
+  const [audioUrl, setAudioUrl] = useState('');
+  const [loadingParts, setLoadingParts] = useState(false);
   
   // Writing tasks state
   const [writingTasks, setWritingTasks] = useState<any[]>([]);
@@ -99,6 +110,34 @@ export function AddQuestionPage() {
       loadWritingTasks();
     }
   }, [testId, selectedSection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load listening parts when listening section is selected
+  useEffect(() => {
+    if (selectedSection === 'listening' && listeningId) {
+      loadParts();
+      // Load listening question types
+      loadListeningQuestionTypes();
+    }
+  }, [listeningId, selectedSection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [listeningQuestionTypes, setListeningQuestionTypes] = useState<QuestionType[]>([]);
+
+  const loadListeningQuestionTypes = async () => {
+    try {
+      const types = await getListeningQuestionTypes();
+      console.log('📦 Listening question types:', types);
+      setListeningQuestionTypes(types);
+    } catch (error) {
+      console.error('Error loading listening question types:', error);
+    }
+  };
+
+  // Load existing part data when sub type changes
+  useEffect(() => {
+    if (selectedSection === 'listening' && parts.length > 0) {
+      loadPartData();
+    }
+  }, [selectedSubType, parts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load existing passage data when sub type changes
   useEffect(() => {
@@ -236,6 +275,111 @@ export function AddQuestionPage() {
     }
   };
 
+  const loadParts = async () => {
+    if (!listeningId) return;
+    
+    try {
+      setLoadingParts(true);
+      const response = await getListeningParts(listeningId);
+      console.log('📦 Parts response:', response);
+      console.log('📦 Parts results:', response.results);
+      setParts(response.results || []);
+    } catch (error) {
+      console.error('Error loading parts:', error);
+    } finally {
+      setLoadingParts(false);
+    }
+  };
+
+  const loadPartData = () => {
+    console.log('🔍 loadPartData called');
+    console.log('🔍 selectedSubType:', selectedSubType);
+    console.log('🔍 parts:', parts);
+    
+    // Find part matching current sub type
+    const currentPart = parts.find(
+      (p) => p.part_type === selectedSubType
+    );
+
+    console.log('🔍 currentPart:', currentPart);
+
+    if (currentPart) {
+      console.log('📄 Loading part data:', currentPart);
+      console.log('📄 Groups in part:', currentPart.groups);
+      
+      // Load title and audio
+      setTitle(currentPart.title || '');
+      setAudioUrl(currentPart.audio || '');
+
+      // Convert backend groups to frontend format
+      const convertedGroups: QuestionGroup[] = (currentPart.groups || []).map((group: any) => {
+        console.log('🔄 Converting group:', group);
+        
+        // Backend returns listening_question_type as string (for listening parts)
+        const questionType = typeof group.listening_question_type === 'string' 
+          ? group.listening_question_type 
+          : group.listening_question_type?.type;
+        
+        const convertedGroup: QuestionGroup = {
+          question_type: questionType,
+          from_value: group.from_value,
+          to_value: group.to_value,
+        };
+
+        // ✅ NEW: Backend now returns single objects (not arrays)
+        
+        // Convert gap_containers to gap_filling (now it's an object)
+        if (group.gap_containers) {
+          convertedGroup.gap_filling = {
+            title: group.gap_containers.title || '',
+            principle: group.gap_containers.principle || group.gap_containers.criteria || 'NMT_TWO',
+            body: group.gap_containers.body || '',
+          };
+        }
+
+        // Convert identify_info (now it's an object)
+        if (group.identify_info) {
+          convertedGroup.identify_info = {
+            title: group.identify_info.title || '',
+            question: group.identify_info.question || [],
+          };
+        }
+
+        // Convert matching (now it's an object)
+        if (group.matching) {
+          convertedGroup.matching_item = {
+            title: group.matching.title || '',
+            statement: group.matching.statement || [],
+            option: group.matching.option || [],
+            variant_type: group.matching.variant_type || 'letter',
+            answer_count: group.matching.answer_count || 1,
+          };
+        }
+
+        console.log('✨ Converted group:', convertedGroup);
+        return convertedGroup;
+      });
+
+      console.log('🎯 All converted groups:', convertedGroups);
+      setGroups(convertedGroups);
+      
+      // Expand all groups when loading existing data
+      const allGroupIndexes = convertedGroups.map((_, index) => index);
+      setExpandedGroups(allGroupIndexes);
+      
+      console.log('✅ Groups state updated. Current groups length:', convertedGroups.length);
+    } else {
+      console.log('❌ No part found for selectedSubType:', selectedSubType);
+      console.log('🧹 Clearing form fields...');
+      
+      // Clear form if part doesn't exist
+      setTitle('');
+      setAudioUrl('');
+      setGroups([]);
+      setExpandedGroups([]);
+    }
+  };
+
   const addQuestionGroup = (questionType: QuestionType) => {
     const lastGroup = groups[groups.length - 1];
     const fromValue = lastGroup ? lastGroup.to_value + 1 : 1;
@@ -338,8 +482,59 @@ export function AddQuestionPage() {
     }
   };
 
+  const handleListeningSave = async (data: { title: string; audioFile?: File; groups: QuestionGroup[] }) => {
+    if (!listeningId) {
+      alert('Listening ID mavjud emas. Avval test yarating.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      console.log('🔄 Creating listening part with groups...');
+      
+      // Convert QuestionGroup[] to ListeningQuestionGroup[]
+      const listeningGroups = data.groups.map(group => ({
+        listening_question_type: group.question_type,
+        from_value: group.from_value,
+        to_value: group.to_value,
+        gap_filling: group.gap_filling,
+        identify_info: group.identify_info,
+        matching_item: group.matching_item,
+      }));
+      
+      // Step 1: Create Part (without audio)
+      const partRequest: CreateListeningPartRequest = {
+        listening: listeningId,
+        part_type: selectedSubType as PartType,
+        groups: listeningGroups,
+      };
+
+      const partResult = await createListeningPartWithQuestions(partRequest);
+      console.log('✅ Part created with ID:', partResult.id);
+      
+      // Step 2: Upload audio (if provided) with part_id
+      if (data.audioFile) {
+        console.log('🔄 Uploading audio for part:', partResult.id);
+        const { createListeningAudio } = await import('../lib/api');
+        await createListeningAudio(data.audioFile, partResult.id);
+        console.log('✅ Audio uploaded and linked to part');
+      }
+
+      alert('Part muvaffaqiyatli saqlandi!');
+      
+      // Navigate back to test detail
+      navigate(`/test/${testId}`);
+    } catch (error) {
+      console.error('Error saving part:', error);
+      alert(`Xatolik: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const getQuestionTypeLabel = (type: string): string => {
     const labels: Record<string, string> = {
+      // Reading types
       'multiple_choice': 'Multiple Choice',
       'true_false_not_given': 'True / False / Not Given',
       'yes_no_not_given': 'Yes / No / Not Given',
@@ -353,12 +548,22 @@ export function AddQuestionPage() {
       'flowchart_completion': 'Flow-chart Completion',
       'diagram_labeling': 'Diagram Labeling',
       'short_answer': 'Short Answer Questions',
+      
+      // Listening types
+      'form_completion': 'Form Completion',
+      'note_completion': 'Note Completion',
+      'multiple_choice_one': 'Multiple Choice (One answer)',
+      'multiple_choice_multiple': 'Multiple Choice (Multiple answers)',
+      'matching': 'Matching',
+      'map_diagram_labeling': 'Map / Diagram Labelling',
+      'pick_from_list': 'Pick from a List',
     };
     return labels[type] || type;
   };
 
   const getQuestionTypeDescription = (type: string): string => {
     const descriptions: Record<string, string> = {
+      // Reading types
       'multiple_choice': 'Choose correct answer',
       'true_false_not_given': 'Factual information',
       'yes_no_not_given': 'Writer\'s views',
@@ -372,6 +577,15 @@ export function AddQuestionPage() {
       'flowchart_completion': 'Complete flowchart',
       'diagram_labeling': 'Label diagram parts',
       'short_answer': 'Answer in 3 words max',
+      
+      // Listening types
+      'form_completion': 'Complete form with information',
+      'note_completion': 'Complete notes with key details',
+      'multiple_choice_one': 'Choose one correct answer',
+      'multiple_choice_multiple': 'Choose multiple correct answers',
+      'matching': 'Match items to categories',
+      'map_diagram_labeling': 'Label map or diagram parts',
+      'pick_from_list': 'Select correct options from list',
     };
     return descriptions[type] || '';
   };
@@ -972,10 +1186,22 @@ export function AddQuestionPage() {
           )}
 
           {selectedSection === 'listening' && (
-            <div className="max-w-3xl mx-auto text-center py-16">
-              <Headphones className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-xl text-slate-900 mb-2">Listening Section</h3>
-              <p className="text-slate-600">Listening part qo'shish funksiyasi tez orada...</p>
+            <div className="max-w-5xl mx-auto">
+              {/* Loading Indicator */}
+              {loadingParts || loading || listeningQuestionTypes.length === 0 ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-12 h-12 animate-spin text-[#042d62] mb-4" />
+                    <p className="text-slate-600">Yuklanmoqda...</p>
+                  </div>
+                </div>
+              ) : (
+                <ListeningForm
+                  questionTypes={listeningQuestionTypes}
+                  onSave={handleListeningSave}
+                  saving={saving}
+                />
+              )}
             </div>
           )}
 

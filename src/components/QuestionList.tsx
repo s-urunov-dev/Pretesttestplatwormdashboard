@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Trash2, Edit2, BookOpen, Headphones, PenTool, Mic, Clock, Award, ChevronDown, ChevronUp, Eye } from 'lucide-react';
 import { Question } from './QuestionPanel';
 import { QuestionPreview } from './QuestionPreview';

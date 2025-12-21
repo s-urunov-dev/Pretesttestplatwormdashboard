@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { X, BookOpen, Headphones, PenTool, Mic } from 'lucide-react';
 import { Question } from './QuestionPanel';
 import { EnhancedQuestionForm } from './EnhancedQuestionForm';

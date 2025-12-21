@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, ChevronDown, ChevronUp } from 'lucide-react';
 import { 
   QuestionGroup, 

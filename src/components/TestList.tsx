@@ -1,3 +1,4 @@
+import React from 'react';
 import { BookOpen, Headphones, PenTool, Trash2, Eye, Calendar, FileText, AlertCircle, RefreshCw, WifiOff, Edit } from 'lucide-react';
 import { TestResponse } from '../lib/api';
 

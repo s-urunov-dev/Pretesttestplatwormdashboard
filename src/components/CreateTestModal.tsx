@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, FileText, Loader2, WifiOff } from 'lucide-react';
 import { createTest, createReading, createListening, TestResponse, isOfflineMode } from '../lib/api';
 

@@ -74,6 +74,16 @@ export interface QuestionGroup {
   matching_item?: MatchingItemData;
 }
 
+// Listening Question Group (with listening_question_type for API)
+export interface ListeningQuestionGroup {
+  listening_question_type: string;
+  from_value: number;
+  to_value: number;
+  gap_filling?: GapFillingData;
+  identify_info?: IdentifyInfoData;
+  matching_item?: MatchingItemData;
+}
+
 // Reading Passage Create Request
 export interface CreateReadingPassageRequest {
   reading: number;
@@ -114,6 +124,7 @@ export interface ListeningPart {
   part_type: PartType;
   listening: number;
   question_type: number[];
+  groups?: any[]; // Question groups
 }
 
 export interface ListeningSection {
@@ -1296,10 +1307,9 @@ export interface CreateSectionRequest {
 
 // Listening Part Create Request
 export interface CreateListeningPartRequest {
-  audio: File;
-  part_type: PartType;
   listening: number;
-  question_type: number[];
+  part_type: PartType;
+  groups: ListeningQuestionGroup[];
 }
 
 // Listening Question Group Create Request
@@ -1324,3 +1334,265 @@ export const GAP_FILLING_CRITERIA = {
   NUMBER_ONLY: { value: 'NUMBER_ONLY', label: 'A number' },
   FROM_BOX: { value: 'FROM_BOX', label: 'Choose from the box' },
 };
+
+// ============= LISTENING API FUNCTIONS =============
+
+// Audio Response Interface
+export interface ListeningAudioResponse {
+  id: number;
+  audio: string; // URL to the uploaded audio file
+  created_at: string;
+  updated_at: string;
+}
+
+// Create listening audio file
+export async function createListeningAudio(audioFile: File, listeningPartId?: number): Promise<ListeningAudioResponse> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    // Offline mode: return mock data
+    return {
+      id: Date.now(),
+      audio: URL.createObjectURL(audioFile),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  try {
+    console.log('🔄 Uploading audio file:', audioFile.name, 'for part:', listeningPartId);
+    
+    const formData = new FormData();
+    formData.append('audio', audioFile);
+    
+    // Add listening_part if provided
+    if (listeningPartId) {
+      formData.append('listening_part', listeningPartId.toString());
+    }
+
+    const response = await fetch(`${BASE_URL}/listening/audio/create/`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    console.log('📡 Audio upload response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Audio upload error:', errorText);
+      
+      let errorMessage = 'Failed to upload audio';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || JSON.stringify(errorJson);
+      } catch {
+        errorMessage = errorText || `HTTP ${response.status}`;
+      }
+      
+      throw new Error(`Audio yuklashda xatolik: ${errorMessage}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Audio uploaded successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('💥 Error uploading audio:', error);
+    throw error;
+  }
+}
+
+// Get listening audio by ID
+export async function getListeningAudio(audioId: number): Promise<ListeningAudioResponse> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    throw new Error('Audio not available in offline mode');
+  }
+
+  try {
+    console.log('🔄 Fetching audio:', audioId);
+    
+    const response = await fetch(`${BASE_URL}/listening/audio/${audioId}/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch audio: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Audio loaded:', data);
+    return data;
+  } catch (error) {
+    console.error('Error fetching audio:', error);
+    throw error;
+  }
+}
+
+// Update listening audio
+export async function updateListeningAudio(audioId: number, audioFile: File): Promise<ListeningAudioResponse> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    // Offline mode: return mock data
+    return {
+      id: audioId,
+      audio: URL.createObjectURL(audioFile),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  try {
+    console.log('🔄 Updating audio:', audioId);
+    
+    const formData = new FormData();
+    formData.append('audio', audioFile);
+
+    const response = await fetch(`${BASE_URL}/listening/audio/${audioId}/`, {
+      method: 'PATCH',
+      body: formData,
+    });
+
+    console.log('📡 Audio update response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Audio update error:', errorText);
+      
+      let errorMessage = 'Failed to update audio';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.detail || JSON.stringify(errorJson);
+      } catch {
+        errorMessage = errorText || `HTTP ${response.status}`;
+      }
+      
+      throw new Error(`Audio yangilashda xatolik: ${errorMessage}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Audio updated successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('💥 Error updating audio:', error);
+    throw error;
+  }
+}
+
+// Get listening question types
+export async function getListeningQuestionTypes(): Promise<QuestionType[]> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    return [];
+  }
+
+  try {
+    console.log('🔄 Fetching listening question types...');
+    
+    const response = await fetch(`${BASE_URL}/listening-question-type/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch listening question types');
+    }
+
+    const data = await response.json();
+    console.log('✅ Listening question types loaded:', data);
+    
+    return data.results || data;
+  } catch (error) {
+    console.error('Error fetching listening question types:', error);
+    return [];
+  }
+}
+
+// Get listening parts for a listening section
+export async function getListeningParts(listeningId: number): Promise<any> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    throw new Error('Parts not available in offline mode');
+  }
+
+  try {
+    console.log('🔄 Fetching listening parts for listening:', listeningId);
+    
+    const response = await fetch(`${BASE_URL}/listening-parts/?listening=${listeningId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('📡 Parts response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Parts error:', errorText);
+      throw new Error(`Failed to fetch parts: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Parts loaded:', data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching parts:', error);
+    throw error;
+  }
+}
+
+// Create a listening part with questions
+export async function createListeningPartWithQuestions(data: CreateListeningPartRequest): Promise<{ id: number }> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    console.log('Offline mode: part saved locally');
+    return { id: Date.now() };
+  }
+
+  try {
+    console.log('🔄 Creating listening part:', data);
+    
+    const response = await fetch(`${BASE_URL}/listening-part-create/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    console.log('📡 Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Error response:', errorText);
+      
+      let errorMessage = 'Failed to create part';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = JSON.stringify(errorJson, null, 2);
+      } catch {
+        errorMessage = errorText || `HTTP ${response.status}`;
+      }
+      
+      throw new Error(`Part yaratib bo'lmadi: ${errorMessage}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Listening part created successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('💥 Error creating part:', error);
+    throw error;
+  }
+}

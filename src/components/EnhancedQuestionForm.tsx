@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Plus, Trash2, Image as ImageIcon, Table as TableIcon, FileText } from 'lucide-react';
 import { Question } from './QuestionPanel';
 import { ImageUploader } from './ImageUploader';

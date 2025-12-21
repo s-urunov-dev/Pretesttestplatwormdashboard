@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PenTool, Image as ImageIcon, FileText, Loader2 } from 'lucide-react';
 import { WritingType } from '../lib/api';
 
