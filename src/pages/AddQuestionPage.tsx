@@ -5,11 +5,14 @@ import {
   getReadingQuestionTypes,
   getListeningQuestionTypes,
   createReadingPassage,
+  updateReadingPassage,
   getReadingPassages,
   getListeningParts,
-  createListeningPartWithQuestions,
+  getListening,
+  getListeningPartById,
   QuestionType,
   CreateReadingPassageRequest,
+  UpdateReadingPassageRequest,
   CreateListeningPartRequest,
   QuestionGroup,
   PassageType,
@@ -20,10 +23,12 @@ import {
   VariantType,
   WritingType,
   getWritingTasksForTest,
-} from '../lib/api';
+  createListeningPartWithQuestions,
+} from '../lib/api-cleaned';
 import { BulkReadingForm } from '../components/BulkReadingForm';
 import { WritingForm } from '../components/WritingForm';
 import { ListeningForm } from '../components/ListeningForm';
+import { SuccessAnimation } from '../components/SuccessAnimation';
 
 type SectionType = 'reading' | 'listening' | 'writing';
 type SubType = 'passage1' | 'passage2' | 'passage3' | 'part_1' | 'part_2' | 'part_3' | 'part_4' | 'task1' | 'task2' | 'bulk_passages';
@@ -50,6 +55,7 @@ export function AddQuestionPage() {
   const [body, setBody] = useState('');
   const [groups, setGroups] = useState<QuestionGroup[]>([]);
   const [passages, setPassages] = useState<any[]>([]);
+  const [currentPassageId, setCurrentPassageId] = useState<number | undefined>();
   
   // Listening parts state (similar to passages)
   const [parts, setParts] = useState<any[]>([]);
@@ -59,6 +65,10 @@ export function AddQuestionPage() {
   // Writing tasks state
   const [writingTasks, setWritingTasks] = useState<any[]>([]);
   const [loadingWritingTasks, setLoadingWritingTasks] = useState(false);
+
+  // Success animation state
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState({ title: '', message: '' });
 
   // Accordion state for question groups
   const [expandedGroups, setExpandedGroups] = useState<number[]>([]);
@@ -70,6 +80,18 @@ export function AddQuestionPage() {
     const loadData = async () => {
       try {
         setLoading(true);
+        
+        // Clear all state when testId changes (new test selected)
+        setReadingId(undefined);
+        setListeningId(undefined);
+        setPassages([]);
+        setParts([]);
+        setWritingTasks([]);
+        setTitle('');
+        setBody('');
+        setGroups([]);
+        setExpandedGroups([]);
+        
         const [testDetail, types] = await Promise.all([
           getTestDetail(parseInt(testId)),
           getReadingQuestionTypes(),
@@ -185,6 +207,10 @@ export function AddQuestionPage() {
     if (currentPassage) {
       console.log('📄 Loading passage data:', currentPassage);
       console.log('📄 Groups in passage:', currentPassage.groups);
+      console.log('📄 Passage ID:', currentPassage.id);
+      
+      // Set passage ID for update mode
+      setCurrentPassageId(currentPassage.id);
       
       // Load title and body
       setTitle(currentPassage.title || '');
@@ -252,6 +278,7 @@ export function AddQuestionPage() {
       console.log('🧹 Clearing form fields...');
       
       // Clear form if passage doesn't exist
+      setCurrentPassageId(undefined);
       setTitle('');
       setBody('');
       setGroups([]);
@@ -280,10 +307,53 @@ export function AddQuestionPage() {
     
     try {
       setLoadingParts(true);
-      const response = await getListeningParts(listeningId);
-      console.log('📦 Parts response:', response);
-      console.log('📦 Parts results:', response.results);
-      setParts(response.results || []);
+      const response = await getListening(listeningId);
+      console.log('📦 Listening response:', response);
+      
+      // Extract parts from response (part_1, part_2, part_3, part_4)
+      const partsArray = [];
+      
+      // Each part should contain the full part object with groups
+      // If it's just an ID (number), we need to fetch the full part separately
+      const partTypes: PartType[] = ['part_1', 'part_2', 'part_3', 'part_4'];
+      
+      for (const partType of partTypes) {
+        const partData = response[partType];
+        
+        if (partData) {
+          // Check if it's a full object or just an ID
+          if (typeof partData === 'object' && partData !== null) {
+            // Full object - use it directly
+            console.log(`✅ Part ${partType} is a full object:`, partData);
+            partsArray.push({
+              ...partData,
+              part_type: partType,
+            });
+          } else if (typeof partData === 'number') {
+            // Just an ID - fetch the full part
+            console.log(`🔄 Part ${partType} is ID only (${partData}), fetching full data...`);
+            try {
+              const fullPartData = await getListeningPartById(partData);
+              console.log(`✅ Full part data fetched for ${partType}:`, fullPartData);
+              partsArray.push({
+                ...fullPartData,
+                part_type: partType,
+              });
+            } catch (fetchError) {
+              console.error(`❌ Failed to fetch full data for part ${partType}:`, fetchError);
+              // Fallback: add minimal data
+              partsArray.push({
+                id: partData,
+                part_type: partType,
+                groups: [],
+              });
+            }
+          }
+        }
+      }
+      
+      console.log('📦 Parts array with part_type:', partsArray);
+      setParts(partsArray);
     } catch (error) {
       console.error('Error loading parts:', error);
     } finally {
@@ -326,10 +396,16 @@ export function AddQuestionPage() {
           to_value: group.to_value,
         };
 
-        // ✅ NEW: Backend now returns single objects (not arrays)
-        
-        // Convert gap_containers to gap_filling (now it's an object)
-        if (group.gap_containers) {
+        // Convert completion to gap_filling (new API structure)
+        if (group.completion) {
+          convertedGroup.gap_filling = {
+            title: group.completion.title || '',
+            principle: group.completion.principle || 'NMT_TWO',
+            body: group.completion.body || '',
+          };
+        }
+        // Fallback: Convert gap_containers to gap_filling (old structure)
+        else if (group.gap_containers) {
           convertedGroup.gap_filling = {
             title: group.gap_containers.title || '',
             principle: group.gap_containers.principle || group.gap_containers.criteria || 'NMT_TWO',
@@ -337,16 +413,19 @@ export function AddQuestionPage() {
           };
         }
 
-        // Convert identify_info (now it's an object)
-        if (group.identify_info) {
-          convertedGroup.identify_info = {
-            title: group.identify_info.title || '',
-            question: group.identify_info.question || [],
+        // Convert matching_statement to matching_item (new API structure)
+        if (group.matching_statement && Array.isArray(group.matching_statement) && group.matching_statement.length > 0) {
+          const firstStatement = group.matching_statement[0];
+          convertedGroup.matching_item = {
+            title: firstStatement.title || '',
+            statement: firstStatement.statement || [],
+            option: firstStatement.option || [],
+            variant_type: firstStatement.variant_type || 'letter',
+            answer_count: firstStatement.answer_count || 1,
           };
         }
-
-        // Convert matching (now it's an object)
-        if (group.matching) {
+        // Fallback: Convert matching (old structure)
+        else if (group.matching) {
           convertedGroup.matching_item = {
             title: group.matching.title || '',
             statement: group.matching.statement || [],
@@ -354,6 +433,44 @@ export function AddQuestionPage() {
             variant_type: group.matching.variant_type || 'letter',
             answer_count: group.matching.answer_count || 1,
           };
+        }
+
+        // Convert identify_info (same in both structures)
+        if (group.identify_info) {
+          convertedGroup.identify_info = {
+            title: group.identify_info.title || '',
+            question: group.identify_info.question || [],
+          };
+        }
+
+        // Convert table_completion (new API: index-based table_details)
+        if (group.table_completion) {
+          console.log('🔄 Converting table_completion:', group.table_completion);
+          
+          let tableDetails: any = group.table_completion.table_details;
+          
+          // New API format: table_details is object with numeric keys
+          if (typeof tableDetails === 'string') {
+            try {
+              tableDetails = JSON.parse(tableDetails);
+            } catch (e) {
+              console.error('Failed to parse table_details:', e);
+              tableDetails = {};
+            }
+          }
+          
+          // Ensure tableDetails is object
+          if (!tableDetails || typeof tableDetails !== 'object') {
+            tableDetails = {};
+          }
+
+          console.log('✅ Parsed table_details:', tableDetails);
+
+          // Store in new format (will be used by TableCompletionEditorIndexed)
+          convertedGroup.table_completion = {
+            principle: group.table_completion.principle || 'ONE_WORD',
+            table_details: tableDetails,
+          } as any;
         }
 
         console.log('✨ Converted group:', convertedGroup);
@@ -384,8 +501,13 @@ export function AddQuestionPage() {
     const lastGroup = groups[groups.length - 1];
     const fromValue = lastGroup ? lastGroup.to_value + 1 : 1;
     
+    // Get last selected question type from the most recent group
+    const lastGroupType = groups.length > 0 
+      ? groups[groups.length - 1].question_type 
+      : '';
+    
     const newGroup: QuestionGroup = {
-      question_type: questionType.type,
+      question_type: lastGroupType || '', // Auto-fill with last used type
       from_value: fromValue,
       to_value: fromValue,
     };
@@ -453,34 +575,110 @@ export function AddQuestionPage() {
           };
         }
         
+        // Convert table_completion to coordinate-based format (row:col)
+        if (cleanedGroup.table_completion) {
+          const tableDetailsCoordinate: { [key: string]: string } = {};
+          
+          if (cleanedGroup.table_completion.table_details && typeof cleanedGroup.table_completion.table_details === 'object') {
+            const details = cleanedGroup.table_completion.table_details as any;
+            
+            // Check if it's already coordinate-based (has "row:col" keys)
+            if (Object.keys(details).some(key => key.includes(':'))) {
+              // Already coordinate-based
+              Object.assign(tableDetailsCoordinate, details);
+            } else if (details.rows && Array.isArray(details.rows)) {
+              // Convert rows to coordinate-based format (row:col)
+              details.rows.forEach((row: any[], rowIndex: number) => {
+                if (Array.isArray(row)) {
+                  row.forEach((cell: any, colIndex: number) => {
+                    // Extract content from TableCell object
+                    const content = typeof cell === 'object' && cell !== null 
+                      ? (cell.content || '') 
+                      : String(cell || '');
+                    // Use "row:col" format as key
+                    tableDetailsCoordinate[`${rowIndex}:${colIndex}`] = content;
+                  });
+                }
+              });
+            }
+          }
+          
+          cleanedGroup.table_completion = {
+            principle: cleanedGroup.table_completion.principle,
+            table_details: tableDetailsCoordinate,
+          } as any;
+        }
+        
         return cleanedGroup;
       });
 
-      const data: CreateReadingPassageRequest = {
-        reading: readingId,
-        passage_type: selectedSubType as PassageType,
-        title: title.trim(),
-        body: body.trim(),
-        groups: cleanedGroups,
-      };
+      // Check if we're updating an existing passage or creating a new one
+      if (currentPassageId) {
+        // UPDATE mode
+        const updateData: UpdateReadingPassageRequest = {
+          title: title.trim(),
+          body: body.trim(),
+          groups: cleanedGroups,
+        };
+        
+        await updateReadingPassage(currentPassageId, updateData);
+        
+        setSuccessMessage({
+          title: 'Passage yangilandi! 🎉',
+          message: 'O\'zgarishlar muvaffaqiyatli saqlandi'
+        });
+      } else {
+        // CREATE mode
+        const data: CreateReadingPassageRequest = {
+          reading: readingId,
+          passage_type: selectedSubType as PassageType,
+          title: title.trim(),
+          body: body.trim(),
+          groups: cleanedGroups,
+        };
 
-      await createReadingPassage(data);
-      alert('Passage muvaffaqiyatli saqlandi!');
+        await createReadingPassage(data);
+        
+        const passageTypeMap: Record<string, string> = {
+          'passage1': 'Passage 1',
+          'passage2': 'Passage 2',
+          'passage3': 'Passage 3',
+        };
+        
+        setSuccessMessage({
+          title: 'Passage saqlandi! 🎉',
+          message: `${passageTypeMap[selectedSubType] || selectedSubType} muvaffaqiyatli yaratildi`
+        });
+      }
+      
+      setShowSuccess(true);
+      
+      // Reload passages list to reflect the new passage
+      await loadPassages();
       
       // Reset form
+      setCurrentPassageId(undefined);
       setTitle('');
       setBody('');
       setGroups([]);
+      setExpandedGroups([]);
       
-      // Navigate back to test detail
-      navigate(`/test/${testId}`);
+      // Navigate back to test detail after animation
+      setTimeout(() => {
+        navigate(`/test/${testId}`);
+      }, 2000);
     } catch (error) {
       console.error('Error saving passage:', error);
       
       // Check if error is about all passages existing
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (errorMessage.includes('already exists all')) {
-        alert('⚠️ Bu Reading uchun barcha 3 ta passage allaqachon yaratilgan! Yangi Test yarating.');
+        const existingPassages = passages.map((p: any) => `Passage ${p.passage_type.slice(-1)}`).join(', ');
+        alert(
+          `⚠️ Bu Reading uchun barcha 3 ta passage allaqachon yaratilgan!\n\n` +
+          `Mavjud passages: ${existingPassages}\n\n` +
+          `📝 Yangi passage qo'shish uchun yangi Test yarating.`
+        );
       } else {
         alert(`Xatolik: ${errorMessage}`);
       }
@@ -498,17 +696,125 @@ export function AddQuestionPage() {
     setSaving(true);
     try {
       console.log('🔄 Creating listening part with groups...');
+      console.log('📊 Input groups:', JSON.stringify(data.groups, null, 2));
       
-      // Convert QuestionGroup[] to ListeningQuestionGroup[]
-      const listeningGroups = data.groups.map(group => ({
-        listening_question_type: group.question_type,
-        from_value: group.from_value,
-        to_value: group.to_value,
-        gap_filling: group.gap_filling,
-        identify_info: group.identify_info,
-        matching_item: group.matching_item,
-        table_completion: group.table_completion,
-      }));
+      // Convert QuestionGroup[] to ListeningQuestionGroup[] (new API structure)
+      const listeningGroups = data.groups.map(group => {
+        console.log(`🔍 Processing group:`, {
+          question_type: group.question_type,
+          from_value: group.from_value,
+          to_value: group.to_value,
+          has_map_diagram: !!group.map_diagram,
+        });
+        
+        // ⚠️ CRITICAL VALIDATION - Ensure values are not 0 or undefined
+        if (!group.from_value || group.from_value <= 0) {
+          console.error('❌ VALIDATION FAILED: from_value is 0 or invalid!', group);
+          throw new Error('from_value must be greater than 0');
+        }
+        if (!group.to_value || group.to_value <= 0) {
+          console.error('❌ VALIDATION FAILED: to_value is 0 or invalid!', group);
+          throw new Error('to_value must be greater than 0');
+        }
+        if (!group.question_type || group.question_type.trim() === '') {
+          console.error('❌ VALIDATION FAILED: question_type is empty!', group);
+          throw new Error('question_type is required');
+        }
+        
+        const listeningGroup: any = {
+          listening_question_type: group.question_type,
+          from_value: group.from_value,
+          to_value: group.to_value,
+        };
+
+        // Map gap_filling to completion
+        if (group.gap_filling) {
+          listeningGroup.completion = {
+            title: group.gap_filling.title,
+            principle: group.gap_filling.principle,
+            body: group.gap_filling.body,
+          };
+        }
+
+        // Map matching_item to matching_statement (as array)
+        if (group.matching_item) {
+          listeningGroup.matching_statement = [{
+            title: group.matching_item.title,
+            statement: group.matching_item.statement,
+            option: group.matching_item.option,
+            variant_type: group.matching_item.variant_type,
+            answer_count: group.matching_item.answer_count,
+          }];
+        }
+
+        // Map table_completion (new API: coordinate-based table_details)
+        if (group.table_completion) {
+          // Convert table_details to coordinate-based format (row:col)
+          const tableDetailsCoordinate: { [key: string]: string } = {};
+          
+          if (group.table_completion.table_details && typeof group.table_completion.table_details === 'object') {
+            const details = group.table_completion.table_details as any;
+            
+            // Check if it's already coordinate-based (has "row:col" keys)
+            if (Object.keys(details).some(key => key.includes(':'))) {
+              // Already coordinate-based
+              Object.assign(tableDetailsCoordinate, details);
+            } else if (details.rows && Array.isArray(details.rows)) {
+              // Convert rows to coordinate-based format (row:col)
+              details.rows.forEach((row: any[], rowIndex: number) => {
+                if (Array.isArray(row)) {
+                  row.forEach((cell: any, colIndex: number) => {
+                    // Extract content from TableCell object
+                    const content = typeof cell === 'object' && cell !== null 
+                      ? (cell.content || '') 
+                      : String(cell || '');
+                    // Use "row:col" format as key
+                    tableDetailsCoordinate[`${rowIndex}:${colIndex}`] = content;
+                  });
+                }
+              });
+            }
+          }
+          
+          listeningGroup.table_completion = {
+            principle: group.table_completion.principle,
+            table_details: tableDetailsCoordinate,
+          };
+        }
+
+        // Map map_diagram to listening_map (as single object, not array)
+        if (group.map_diagram) {
+          console.log(`🗺️ Processing map_diagram:`, {
+            title: group.map_diagram.title,
+            title_length: group.map_diagram.title?.length,
+            image_type: group.map_diagram.image instanceof File ? 'File' : typeof group.map_diagram.image,
+            image_name: group.map_diagram.image instanceof File ? group.map_diagram.image.name : group.map_diagram.image,
+            image_size: group.map_diagram.image instanceof File ? group.map_diagram.image.size : 'N/A',
+          });
+          
+          listeningGroup.listening_map = {
+            title: group.map_diagram.title,
+            image: group.map_diagram.image,
+          };
+          
+          console.log(`✅ Added listening_map to listeningGroup:`, {
+            title: listeningGroup.listening_map.title,
+            has_image: !!listeningGroup.listening_map.image,
+          });
+        } else {
+          console.log(`⚠️ No map_diagram found in this group`);
+        }
+
+        console.log(`✅ Mapped listening group ${listeningGroup.listening_question_type}:`, {
+          listening_question_type: listeningGroup.listening_question_type,
+          from_value: listeningGroup.from_value,
+          to_value: listeningGroup.to_value,
+          has_listening_map: !!listeningGroup.listening_map,
+        });
+        return listeningGroup;
+      });
+      
+      console.log('📤 Final listeningGroups:', JSON.stringify(listeningGroups, null, 2));
       
       // Step 1: Create Part (without audio)
       const partRequest: CreateListeningPartRequest = {
@@ -517,28 +823,46 @@ export function AddQuestionPage() {
         groups: listeningGroups,
       };
 
+      console.log('📦 Part request:', JSON.stringify(partRequest, null, 2));
+
       const partResult = await createListeningPartWithQuestions(partRequest);
       console.log('✅ Part created with ID:', partResult.id);
       
       // Step 2: Upload audio (if provided) with part_id
       if (data.audioFile) {
         console.log('🔄 Uploading audio for part:', partResult.id);
-        const { createListeningAudio } = await import('../lib/api');
+        const { createListeningAudio } = await import('../lib/api-cleaned');
         await createListeningAudio(data.audioFile, partResult.id);
         console.log('✅ Audio uploaded and linked to part');
       }
 
-      alert('Part muvaffaqiyatli saqlandi!');
+      // Show success animation
+      const partNumber = selectedSubType.slice(-1);
+      setSuccessMessage({
+        title: 'Part saqlandi! 🎉',
+        message: `Part ${partNumber} ${data.audioFile ? 'audio bilan' : ''} muvaffaqiyatli yaratildi`
+      });
+      setShowSuccess(true);
       
-      // Navigate back to test detail
-      navigate(`/test/${testId}`);
+      // Reload parts list to reflect the new part
+      await loadParts();
+      
+      // Navigate back to test detail after animation
+      setTimeout(() => {
+        navigate(`/test/${testId}`);
+      }, 2000);
     } catch (error) {
       console.error('Error saving part:', error);
       
       // Check if error is about all parts existing
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (errorMessage.includes('already exists all')) {
-        alert('⚠️ Bu Listening uchun barcha 4 ta part allaqachon yaratilgan! Yangi Test yarating.');
+        const existingParts = parts.map((p: any) => `Part ${p.part_type.slice(-1)}`).join(', ');
+        alert(
+          `⚠️ Bu Listening uchun barcha 4 ta part allaqachon yaratilgan!\n\n` +
+          `Mavjud partlar: ${existingParts}\n\n` +
+          `📝 Yangi part qo'shish uchun yangi Test yarating.`
+        );
         /*alert(
           '⚠️ Bu Listening uchun barcha 4 ta part allaqachon yaratilgan!\\n\\n' +
           'Har bir Listening faqat 4 ta part (Part 1, 2, 3, 4) ga ega bo\\'lishi mumkin.\\n\\n' +
@@ -684,55 +1008,71 @@ export function AddQuestionPage() {
           <div className="flex items-center gap-4">
             {selectedSection === 'reading' && (
               <>
-                {(['passage1', 'passage2', 'passage3', 'bulk_passages'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setSelectedSubType(type)}
-                    className={`px-6 py-2 rounded-lg transition-all ${
-                      selectedSubType === type
-                        ? 'bg-[#042d62] text-white shadow-md'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {type === 'bulk_passages' ? 'Bulk Passages' : `Passage ${type.slice(-1)}`}
-                  </button>
-                ))}
+                {(['passage1', 'passage2', 'passage3', 'bulk_passages'] as const).map((type) => {
+                  const passageExists = type !== 'bulk_passages' && passages.some((p: any) => p.passage_type === type);
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setSelectedSubType(type)}
+                      className={`px-6 py-2 rounded-lg transition-all ${
+                        selectedSubType === type
+                          ? 'bg-[#042d62] text-white shadow-md'
+                          : passageExists
+                          ? 'bg-green-100 text-green-800 hover:bg-green-200 border border-green-300'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {passageExists && '✅ '}
+                      {type === 'bulk_passages' ? 'Bulk Passages' : `Passage ${type.slice(-1)}`}
+                    </button>
+                  );
+                })}
               </>
             )}
 
             {selectedSection === 'listening' && (
               <>
-                {(['part_1', 'part_2', 'part_3', 'part_4'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setSelectedSubType(type)}
-                    className={`px-6 py-2 rounded-lg transition-all ${
-                      selectedSubType === type
-                        ? 'bg-[#042d62] text-white shadow-md'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    Part {type.slice(-1)}
-                  </button>
-                ))}
+                {(['part_1', 'part_2', 'part_3', 'part_4'] as const).map((type) => {
+                  const partExists = parts.some((p: any) => p.part_type === type);
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setSelectedSubType(type)}
+                      className={`px-6 py-2 rounded-lg transition-all ${
+                        selectedSubType === type
+                          ? 'bg-[#042d62] text-white shadow-md'
+                          : partExists
+                          ? 'bg-green-100 text-green-800 hover:bg-green-200 border border-green-300'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {partExists && '✅ '}Part {type.slice(-1)}
+                    </button>
+                  );
+                })}
               </>
             )}
 
             {selectedSection === 'writing' && (
               <>
-                {(['task1', 'task2'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setSelectedSubType(type)}
-                    className={`px-6 py-2 rounded-lg transition-all ${
-                      selectedSubType === type
-                        ? 'bg-[#042d62] text-white shadow-md'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    Task{type.slice(-1)}
-                  </button>
-                ))}
+                {(['task1', 'task2'] as const).map((type) => {
+                  const taskExists = writingTasks.some((t: any) => t.type === type);
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setSelectedSubType(type)}
+                      className={`px-6 py-2 rounded-lg transition-all ${
+                        selectedSubType === type
+                          ? 'bg-[#042d62] text-white shadow-md'
+                          : taskExists
+                          ? 'bg-green-100 text-green-800 hover:bg-green-200 border border-green-300'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {taskExists && '✅ '}Task{type.slice(-1)}
+                    </button>
+                  );
+                })}
               </>
             )}
           </div>
@@ -852,8 +1192,8 @@ export function AddQuestionPage() {
                           
                           // Determine which fields to show based on question type
                           const isGapFilling = ['sentence_completion', 'summary_completion', 'table_completion', 'flowchart_completion', 'diagram_labeling', 'short_answer'].includes(questionTypeName);
-                          const isIdentifyInfo = ['matching_information', 'true_false_not_given', 'yes_no_not_given'].includes(questionTypeName);
-                          const isMatchingItem = ['matching_headings', 'matching_sentence_endings', 'matching_features', 'multiple_choice'].includes(questionTypeName);
+                          const isIdentifyInfo = ['true_false_not_given', 'yes_no_not_given'].includes(questionTypeName);
+                          const isMatchingItem = ['matching_headings', 'matching_information', 'matching_sentence_endings', 'matching_features', 'multiple_choice'].includes(questionTypeName);
                           
                           return (
                             <div key={index} className="border border-slate-200 rounded-lg overflow-hidden">
@@ -921,6 +1261,8 @@ export function AddQuestionPage() {
                                           identify_info: undefined,
                                           matching_item: undefined,
                                         });
+                                        // Save last selected question type to localStorage
+                                        localStorage.setItem('lastSelectedQuestionType_reading', e.target.value);
                                       }}
                                       className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
                                       required
@@ -1193,12 +1535,12 @@ export function AddQuestionPage() {
                       {saving ? (
                         <>
                           <Loader2 className="w-5 h-5 animate-spin" />
-                          <span>Saqlanmoqda...</span>
+                          <span>{currentPassageId ? 'Yangilanmoqda...' : 'Saqlanmoqda...'}</span>
                         </>
                       ) : (
                         <>
                           <Save className="w-5 h-5" />
-                          <span>Saqlash</span>
+                          <span>{currentPassageId ? 'Yangilash' : 'Saqlash'}</span>
                         </>
                       )}
                     </button>
@@ -1211,7 +1553,7 @@ export function AddQuestionPage() {
           {selectedSection === 'listening' && (
             <div className="max-w-5xl mx-auto">
               {/* Loading Indicator */}
-              {loadingParts || loading || listeningQuestionTypes.length === 0 ? (
+              {loadingParts || loading ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
                   <div className="flex flex-col items-center justify-center py-12">
                     <Loader2 className="w-12 h-12 animate-spin text-[#042d62] mb-4" />
@@ -1254,6 +1596,16 @@ export function AddQuestionPage() {
           })()}
         </main>
       </div>
+
+      {/* Success Animation */}
+      <SuccessAnimation
+        show={showSuccess}
+        onClose={() => setShowSuccess(false)}
+        title={successMessage.title}
+        message={successMessage.message}
+        autoClose={true}
+        autoCloseDelay={2000}
+      />
     </div>
   );
 }

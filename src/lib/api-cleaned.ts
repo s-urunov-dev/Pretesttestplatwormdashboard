@@ -1,4 +1,4 @@
-const BASE_URL = 'https://api.samariddin.space/api/v1';
+export const BASE_URL = 'https://api.samariddin.space/api/v1';
 
 // Check if API is available
 let isAPIAvailable = true;
@@ -65,6 +65,11 @@ export interface MatchingItemData {
   answer_count: number;
 }
 
+export interface MapDiagramData {
+  title: string;
+  image: File | string; // File for upload, string for URL/existing image
+}
+
 export interface TableCompletionData {
   principle: CriteriaType;
   row_count: number;
@@ -75,6 +80,34 @@ export interface TableCompletionData {
   };
 }
 
+// Listening-specific structures (for new API)
+export interface ListeningMapData {
+  image: string;
+  title: string;
+  group: number;
+}
+
+export interface ListeningCompletionData {
+  title: string;
+  principle: CriteriaType;
+  body: string;
+}
+
+export interface ListeningMatchingStatementData {
+  title: string;
+  statement: string[];
+  option: string[];
+  variant_type: VariantType;
+  answer_count: number;
+}
+
+export interface ListeningTableCompletionData {
+  principle: CriteriaType;
+  table_details: {
+    [key: string]: string; // Index-based: { "0": "value", "1": "value", ... }
+  };
+}
+
 export interface QuestionGroup {
   question_type: string;
   from_value: number;
@@ -82,7 +115,8 @@ export interface QuestionGroup {
   gap_filling?: GapFillingData;
   identify_info?: IdentifyInfoData;
   matching_item?: MatchingItemData;
-  table_completion?: TableCompletionData;
+  map_diagram?: MapDiagramData;
+  table_completion?: TableCompletionData | ListeningTableCompletionData; // Support both old and new formats
 }
 
 // Listening Question Group (with listening_question_type for API)
@@ -90,16 +124,23 @@ export interface ListeningQuestionGroup {
   listening_question_type: string;
   from_value: number;
   to_value: number;
-  gap_filling?: GapFillingData;
-  identify_info?: IdentifyInfoData;
-  matching_item?: MatchingItemData;
-  table_completion?: TableCompletionData;
+  listening_map?: ListeningMapData[]|any;
+  table_completion?: ListeningTableCompletionData;
+  completion?: ListeningCompletionData;
+  matching_statement?: ListeningMatchingStatementData[];
 }
 
 // Reading Passage Create Request
 export interface CreateReadingPassageRequest {
   reading: number;
   passage_type: PassageType;
+  title: string;
+  body: string;
+  groups: QuestionGroup[];
+}
+
+// Reading Passage Update Request
+export interface UpdateReadingPassageRequest {
   title: string;
   body: string;
   groups: QuestionGroup[];
@@ -219,6 +260,63 @@ export interface CreateTestRequest {
   is_active: boolean;
 }
 
+// Legacy types for backward compatibility
+export interface ReadingResponse {
+  id: number;
+  test: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListeningResponse {
+  id: number;
+  test: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSectionRequest {
+  test: number;
+}
+
+// Listening Part Create Request
+export interface CreateListeningPartRequest {
+  listening: number;
+  part_type: PartType;
+  groups: ListeningQuestionGroup[];
+}
+
+// Listening Question Group Create Request
+export interface CreateListeningQuestionGroupRequest {
+  question_type: string;
+  from_value: number;
+  to_value: number;
+  gap_filling?: GapFillingData;
+  identify_info?: IdentifyInfoData;
+  matching_item?: MatchingItemData;
+}
+
+// Gap Filling Criteria constants
+export const GAP_FILLING_CRITERIA = {
+  ONE_WORD: { value: 'ONE_WORD', label: 'One word only' },
+  ONE_WORD_OR_NUMBER: { value: 'ONE_WORD_OR_NUMBER', label: 'One word and/or a number' },
+  NMT_ONE: { value: 'NMT_ONE', label: 'No more than one word' },
+  NMT_TWO: { value: 'NMT_TWO', label: 'No more than two words' },
+  NMT_THREE: { value: 'NMT_THREE', label: 'No more than three words' },
+  NMT_TWO_NUM: { value: 'NMT_TWO_NUM', label: 'No more than two words and/or a number' },
+  NMT_THREE_NUM: { value: 'NMT_THREE_NUM', label: 'No more than three words and/or a number' },
+  NUMBER_ONLY: { value: 'NUMBER_ONLY', label: 'A number' },
+  FROM_BOX: { value: 'FROM_BOX', label: 'Choose from the box' },
+};
+
+// Audio Response Interface
+export interface ListeningAudioResponse {
+  id: number;
+  audio: string; // URL to the uploaded audio file
+  created_at: string;
+  updated_at: string;
+}
+
 // ============= Offline Storage =============
 
 const STORAGE_KEY = 'ielts_tests_offline';
@@ -251,6 +349,47 @@ function removeOfflineTest(id: number): void {
   const tests = getOfflineTests();
   saveOfflineTests(tests.filter(t => t.id !== id));
 }
+
+// ============= Helper Functions for File Conversion =============
+
+/**
+ * Helper to convert File to base64 string
+ */
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+}
+
+/**
+ * Recursively convert all File objects in an object to base64 strings
+ */
+async function convertFilesToBase64(obj: any): Promise<any> {
+  if (obj instanceof File) {
+    return await fileToBase64(obj);
+  }
+  
+  if (Array.isArray(obj)) {
+    return Promise.all(obj.map(item => convertFilesToBase64(item)));
+  }
+  
+  if (obj !== null && typeof obj === 'object') {
+    const result: any = {};
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        result[key] = await convertFilesToBase64(obj[key]);
+      }
+    }
+    return result;
+  }
+  
+  return obj;
+}
+
+// ============= API Functions =============
 
 // Create a new test
 export async function createTest(data: CreateTestRequest): Promise<TestResponse> {
@@ -319,6 +458,76 @@ export async function createTest(data: CreateTestRequest): Promise<TestResponse>
     return newTest;
   } catch (error) {
     console.error('💥 Error creating test:', error);
+    throw error;
+  }
+}
+
+// Update test name
+export async function updateTest(testId: number, data: { name: string }): Promise<TestResponse> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    // Offline mode: update in local storage
+    const tests = getOfflineTests();
+    const testIndex = tests.findIndex(t => t.id === testId);
+    if (testIndex !== -1) {
+      tests[testIndex].name = data.name;
+      tests[testIndex].updated_at = new Date().toISOString();
+      saveOfflineTests(tests);
+      return tests[testIndex];
+    }
+    throw new Error('Test not found in offline storage');
+  }
+
+  try {
+    console.log('🔄 Updating test:', testId, data);
+    
+    const response = await fetch(`${BASE_URL}/tests/${testId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    console.log('📡 Response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Backend error response:', errorText);
+      
+      let errorMessage = 'Failed to update test';
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.detail) {
+          errorMessage = errorJson.detail;
+        } else if (errorJson.error) {
+          errorMessage = errorJson.error;
+        } else {
+          errorMessage = JSON.stringify(errorJson);
+        }
+      } catch {
+        errorMessage = errorText || `HTTP ${response.status}`;
+      }
+      
+      throw new Error(`Test yangilash amalga oshmadi: ${errorMessage}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ Test updated:', result);
+    
+    // Update in offline cache
+    const tests = getOfflineTests();
+    const testIndex = tests.findIndex(t => t.id === testId);
+    if (testIndex !== -1) {
+      tests[testIndex].name = result.name;
+      tests[testIndex].updated_at = result.updated_at || new Date().toISOString();
+      saveOfflineTests(tests);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('💥 Error updating test:', error);
     throw error;
   }
 }
@@ -568,8 +777,6 @@ export async function isOfflineMode(): Promise<boolean> {
   return !available;
 }
 
-// ============= Additional API Functions =============
-
 // Get detailed test information with reading, listening, writing
 export async function getTestDetail(id: number): Promise<TestDetail> {
   const apiAvailable = await checkAPIAvailability();
@@ -792,6 +999,51 @@ export async function createReadingPassage(data: CreateReadingPassageRequest): P
   }
 }
 
+// Update a reading passage with questions
+export async function updateReadingPassage(id: number, data: UpdateReadingPassageRequest): Promise<void> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    // Offline mode: just return success
+    console.log('Offline mode: passage updated locally');
+    return;
+  }
+
+  try {
+    console.log('🔄 Updating reading passage:', id, data);
+    
+    const response = await fetch(`${BASE_URL}/reading-pasage-update/${id}/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    console.log('📡 Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Error response:', errorText);
+      
+      let errorMessage = 'Failed to update passage';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = JSON.stringify(errorJson, null, 2);
+      } catch {
+        errorMessage = errorText || `HTTP ${response.status}`;
+      }
+      
+      throw new Error(`Passage yangilashda xatolik: ${errorMessage}`);
+    }
+
+    console.log('✅ Reading passage updated successfully');
+  } catch (error) {
+    console.error('💥 Error updating passage:', error);
+    throw error;
+  }
+}
+
 // Bulk create reading passages (v2 API)
 export async function bulkCreateReadingPassages(data: BulkCreateReadingPassagesRequest): Promise<any> {
   const apiAvailable = await checkAPIAvailability();
@@ -849,33 +1101,15 @@ export async function createListeningPart(data: CreateListeningPartRequest): Pro
       id: Date.now(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      audio: URL.createObjectURL(data.audio),
+      audio: '',
       part_type: data.part_type,
       listening: data.listening,
-      question_type: data.question_type,
+      question_type: [],
     };
   }
 
-  const formData = new FormData();
-  formData.append('audio', data.audio);
-  formData.append('part_type', data.part_type);
-  formData.append('listening', data.listening.toString());
-  data.question_type.forEach(qt => {
-    formData.append('question_type', qt.toString());
-  });
-
-  const response = await fetch(`${BASE_URL}/listening-part-create/`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Failed to create listening part:', response.status, errorText);
-    throw new Error('Failed to create listening part');
-  }
-
-  return response.json();
+  // This function is deprecated - use createListeningPartWithQuestions instead
+  throw new Error('Use createListeningPartWithQuestions instead');
 }
 
 // Create listening question group
@@ -1298,64 +1532,7 @@ export async function patchWriting(id: number, data: Partial<CreateWritingReques
   }
 }
 
-// Legacy types for backward compatibility
-export interface ReadingResponse {
-  id: number;
-  test: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ListeningResponse {
-  id: number;
-  test: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateSectionRequest {
-  test: number;
-}
-
-// Listening Part Create Request
-export interface CreateListeningPartRequest {
-  listening: number;
-  part_type: PartType;
-  groups: ListeningQuestionGroup[];
-}
-
-// Listening Question Group Create Request
-export interface CreateListeningQuestionGroupRequest {
-  question_type: string;
-  from_value: number;
-  to_value: number;
-  gap_filling?: GapFillingData;
-  identify_info?: IdentifyInfoData;
-  matching_item?: MatchingItemData;
-}
-
-// Gap Filling Criteria constants
-export const GAP_FILLING_CRITERIA = {
-  ONE_WORD: { value: 'ONE_WORD', label: 'One word only' },
-  ONE_WORD_OR_NUMBER: { value: 'ONE_WORD_OR_NUMBER', label: 'One word and/or a number' },
-  NMT_ONE: { value: 'NMT_ONE', label: 'No more than one word' },
-  NMT_TWO: { value: 'NMT_TWO', label: 'No more than two words' },
-  NMT_THREE: { value: 'NMT_THREE', label: 'No more than three words' },
-  NMT_TWO_NUM: { value: 'NMT_TWO_NUM', label: 'No more than two words and/or a number' },
-  NMT_THREE_NUM: { value: 'NMT_THREE_NUM', label: 'No more than three words and/or a number' },
-  NUMBER_ONLY: { value: 'NUMBER_ONLY', label: 'A number' },
-  FROM_BOX: { value: 'FROM_BOX', label: 'Choose from the box' },
-};
-
 // ============= LISTENING API FUNCTIONS =============
-
-// Audio Response Interface
-export interface ListeningAudioResponse {
-  id: number;
-  audio: string; // URL to the uploaded audio file
-  created_at: string;
-  updated_at: string;
-}
 
 // Create listening audio file
 export async function createListeningAudio(audioFile: File, listeningPartId?: number): Promise<ListeningAudioResponse> {
@@ -1557,8 +1734,73 @@ export async function getListeningParts(listeningId: number): Promise<any> {
   }
 }
 
-// Create a listening part with questions
-export async function createListeningPartWithQuestions(data: CreateListeningPartRequest): Promise<{ id: number }> {
+// Get listening section by ID with part details
+export async function getListening(listeningId: number): Promise<any> {
+  try {
+    console.log('🔄 Fetching listening section:', listeningId);
+    
+    const response = await fetch(`${BASE_URL}/listening/${listeningId}/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('📡 Listening response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Listening error:', errorText);
+      throw new Error(`Failed to fetch listening: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Listening loaded:', data);
+    
+    // The data should already contain part_1, part_2, part_3, part_4 if they exist
+    return data;
+  } catch (error) {
+    console.error('Error fetching listening:', error);
+    throw error;
+  }
+}
+
+// Get a single listening part by ID
+export async function getListeningPartById(partId: number): Promise<any> {
+  try {
+    console.log('🔄 Fetching listening part:', partId);
+    
+    const response = await fetch(`${BASE_URL}/listening-parts/${partId}/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('📡 Part response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Part error:', errorText);
+      throw new Error(`Failed to fetch part: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Part loaded:', data);
+    return data;
+  } catch (error) {
+    console.error('Error fetching part:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create a listening part with questions
+ * This version uses JSON format with base64-encoded images
+ */
+export async function createListeningPartWithQuestions(
+  data: CreateListeningPartRequest
+): Promise<{ id: number }> {
   const apiAvailable = await checkAPIAvailability();
   
   if (!apiAvailable) {
@@ -1569,12 +1811,50 @@ export async function createListeningPartWithQuestions(data: CreateListeningPart
   try {
     console.log('🔄 Creating listening part:', data);
     
+    // Validate groups before sending
+    data.groups.forEach((group, groupIndex) => {
+      console.log(`🔍 Group ${groupIndex} validation:`, {
+        listening_question_type: group.listening_question_type,
+        from_value: group.from_value,
+        to_value: group.to_value,
+      });
+      
+      if (!group.listening_question_type || group.listening_question_type.trim() === '') {
+        throw new Error(`Group ${groupIndex}: listening_question_type is required!`);
+      }
+      if (!group.from_value || group.from_value <= 0) {
+        throw new Error(`Group ${groupIndex}: from_value must be greater than 0!`);
+      }
+      if (!group.to_value || group.to_value <= 0) {
+        throw new Error(`Group ${groupIndex}: to_value must be greater than 0!`);
+      }
+    });
+    
+    // Check if any group has file uploads
+    const hasFileUpload = data.groups.some(group => {
+      const map = (group as any).listening_map;
+      return map && (
+        map.image instanceof File ||
+        (Array.isArray(map) && map.some((m: any) => m.image instanceof File))
+      );
+    });
+
+    let requestData = data;
+    
+    // Convert files to base64 if present
+    if (hasFileUpload) {
+      console.log('🔄 Converting files to base64...');
+      requestData = await convertFilesToBase64(data);
+      console.log('✅ Files converted to base64');
+    }
+
+    console.log('📤 Sending JSON request...');
     const response = await fetch(`${BASE_URL}/listening-part-create/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(requestData),
     });
 
     console.log('📡 Response status:', response.status);

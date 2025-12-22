@@ -1,6 +1,6 @@
 import React from 'react';
-import { BookOpen, Headphones, PenTool, Trash2, Eye, Calendar, FileText, AlertCircle, RefreshCw, WifiOff, Edit } from 'lucide-react';
-import { TestResponse } from '../lib/api';
+import { BookOpen, Headphones, PenTool, Trash2, Eye, Calendar, FileText, AlertCircle, RefreshCw, WifiOff, Edit, CheckCircle, XCircle } from 'lucide-react';
+import { TestResponse } from '../lib/api-cleaned';
 
 export interface Test {
   id: string;
@@ -127,11 +127,25 @@ export function TestList({ tests, onDelete, onView, onEdit, loading, error, offl
                       <FileText className="w-6 h-6 text-white" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-slate-900 mb-2">{test.name}</h3>
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-slate-900">{test.name}</h3>
+                        {/* Active Status Badge */}
+                        {test.is_active ? (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg shadow-sm" title="Test aktiv">
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            <span className="text-xs text-green-700">Active</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-red-50 to-rose-50 border-2 border-red-200 rounded-lg shadow-sm" title="Test aktiv emas">
+                            <XCircle className="w-4 h-4 text-red-600" />
+                            <span className="text-xs text-red-700">Inactive</span>
+                          </div>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 text-sm text-slate-500">
                         <Calendar className="w-4 h-4" />
                         <div>
-                          Yaratilgan: {test.created_at ? new Date(test.created_at).toLocaleDateString('uz-UZ', {
+                          {test.created_at ? new Date(test.created_at).toLocaleDateString('uz-UZ', {
                             day: 'numeric',
                             month: 'long',
                             year: 'numeric'

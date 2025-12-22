@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Type, Edit3 } from 'lucide-react';
-import { CriteriaType, GAP_FILLING_CRITERIA } from '../lib/api';
+import { CriteriaType, GAP_FILLING_CRITERIA } from '../lib/api-cleaned';
 
 // Cell types
 export type CellType = 'text' | 'answer';

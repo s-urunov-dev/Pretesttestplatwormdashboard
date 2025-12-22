@@ -4,28 +4,63 @@ import {
   QuestionGroup, 
   GAP_FILLING_CRITERIA, 
   createReadingPassage, 
+  updateReadingPassage,
   createReading,
   PassageType,
   CriteriaType,
   getReadingQuestionTypes,
   QuestionType
-} from '../lib/api';
+} from '../lib/api-cleaned';
+import { SuccessAnimation } from './SuccessAnimation';
+import { RichTextEditor } from './RichTextEditor';
+import { MatchingItemEditor } from './MatchingItemEditor';
+import { AdminMatchingEditor, MatchingQuestionData } from './AdminMatchingEditor';
 
 interface ReadingQuestionFormProps {
   testId?: number;
   passageNumber: number; // 1, 2, or 3
   onSubmit?: () => void;
   onBack?: () => void;
+  initialPassageId?: number; // For update mode
+  initialTitle?: string;
+  initialBody?: string;
+  initialGroups?: QuestionGroup[];
 }
 
-export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }: ReadingQuestionFormProps) {
-  const [title, setTitle] = useState('');
-  const [passageText, setPassageText] = useState('');
-  const [questionGroups, setQuestionGroups] = useState<QuestionGroup[]>([]);
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(['0']);
+export function ReadingQuestionForm({ 
+  testId, 
+  passageNumber, 
+  onSubmit, 
+  onBack,
+  initialPassageId,
+  initialTitle = '',
+  initialBody = '',
+  initialGroups = []
+}: ReadingQuestionFormProps) {
+  const [title, setTitle] = useState(initialTitle);
+  const [passageText, setPassageText] = useState(initialBody);
+  const [questionGroups, setQuestionGroups] = useState<QuestionGroup[]>(initialGroups);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(initialGroups.map((_, i) => i.toString()));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([]);
   const [loadingQuestionTypes, setLoadingQuestionTypes] = useState(true);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  
+  // Track original values to detect changes
+  const [originalTitle, setOriginalTitle] = useState(initialTitle);
+  const [originalPassageText, setOriginalPassageText] = useState(initialBody);
+  const [originalQuestionGroups, setOriginalQuestionGroups] = useState<QuestionGroup[]>(initialGroups);
+
+  // Sync with initial values when they change
+  useEffect(() => {
+    setTitle(initialTitle);
+    setPassageText(initialBody);
+    setQuestionGroups(initialGroups);
+    setExpandedGroups(initialGroups.map((_, i) => i.toString()));
+    setOriginalTitle(initialTitle);
+    setOriginalPassageText(initialBody);
+    setOriginalQuestionGroups(initialGroups);
+  }, [initialTitle, initialBody, initialGroups]);
 
   // Load question types from API
   useEffect(() => {
@@ -83,17 +118,19 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
     return 'gap_filling';
   };
 
-  const addQuestionGroup = () => {
-    const newId = questionGroups.length.toString();
-    setQuestionGroups([
-      ...questionGroups,
-      {
-        question_type: '',
-        from_value: 0,
-        to_value: 0,
-      },
-    ]);
-    setExpandedGroups([...expandedGroups, newId]);
+  const addQuestionGroup = (questionType: QuestionType) => {
+    // Get last selected question type from the most recent group
+    const lastGroupType = questionGroups.length > 0 
+      ? questionGroups[questionGroups.length - 1].question_type 
+      : '';
+    
+    const newGroup: QuestionGroup = {
+      question_type: lastGroupType || '', // Auto-fill with last used type
+      from_value: 1, // Changed from 0 to 1 (minimum valid value)
+      to_value: 1,   // Changed from 0 to 1 (minimum valid value)
+    };
+
+    setQuestionGroups([...questionGroups, newGroup]);
   };
 
   const removeQuestionGroup = (index: number) => {
@@ -114,6 +151,21 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
       setExpandedGroups([...expandedGroups, index]);
     }
   };
+  
+  // Check if form data has changed from original
+  const hasChanges = () => {
+    if (!initialPassageId) {
+      // CREATE mode - always allow submit if form is valid
+      return true;
+    }
+    
+    // UPDATE mode - check if anything changed
+    const titleChanged = title.trim() !== originalTitle.trim();
+    const passageTextChanged = passageText.trim() !== originalPassageText.trim();
+    const groupsChanged = JSON.stringify(questionGroups) !== JSON.stringify(originalQuestionGroups);
+    
+    return titleChanged || passageTextChanged || groupsChanged;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,38 +183,56 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
       }
     }
 
-    if (!testId) {
-      alert('Test ID mavjud emas. Iltimos, avval test yarating.');
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
-      // Create reading section if needed
-      const readingSection = await createReading(testId);
-      
-      // Determine passage type
-      const passageType: PassageType = `passage${passageNumber}` as PassageType;
+      if (initialPassageId) {
+        // UPDATE mode: patch existing passage
+        console.log('📝 UPDATE mode - Patching existing passage:', initialPassageId);
+        
+        const updatePayload = {
+          title: title,
+          body: passageText,
+          groups: questionGroups,
+        };
+        
+        console.log('📤 Updating reading passage:', JSON.stringify(updatePayload, null, 2));
+        await updateReadingPassage(initialPassageId, updatePayload);
+        
+        console.log('✅ Passage updated successfully');
+      } else {
+        // CREATE mode: create new passage
+        console.log('✅ CREATE mode - Creating new passage');
+        
+        if (!testId) {
+          alert('Test ID mavjud emas. Iltimos, avval test yarating.');
+          return;
+        }
+        
+        // Create reading section if needed
+        const readingSection = await createReading(testId);
+        
+        // Determine passage type
+        const passageType: PassageType = `passage${passageNumber}` as PassageType;
 
-      // Prepare the data payload
-      const payload = {
-        reading: readingSection.id,
-        passage_type: passageType,
-        title: title,
-        body: passageText,
-        groups: questionGroups,
-      };
+        // Prepare the data payload
+        const payload = {
+          reading: readingSection.id,
+          passage_type: passageType,
+          title: title,
+          body: passageText,
+          groups: questionGroups,
+        };
 
-      console.log('📤 Sending reading passage data:', JSON.stringify(payload, null, 2));
+        console.log('📤 Sending reading passage data:', JSON.stringify(payload, null, 2));
+        await createReadingPassage(payload);
+        
+        console.log('✅ Passage created successfully');
+      }
 
-      // Create reading passage with question groups
-      await createReadingPassage(payload);
-
-      alert('Reading passage muvaffaqiyatli yaratildi!');
-      onSubmit?.();
+      setShowSuccessAnimation(true);
     } catch (error) {
-      console.error('Error creating reading passage:', error);
+      console.error('Error saving reading passage:', error);
       alert(`Xatolik yuz berdi: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSubmitting(false);
@@ -297,7 +367,11 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                       </label>
                       <select
                         value={group.question_type}
-                        onChange={(e) => updateQuestionGroup(index, { question_type: e.target.value })}
+                        onChange={(e) => {
+                          updateQuestionGroup(index, { question_type: e.target.value });
+                          // Save last selected question type to localStorage
+                          localStorage.setItem('lastSelectedQuestionType_reading', e.target.value);
+                        }}
                         className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
                         required
                       >
@@ -318,13 +392,24 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-slate-700 mb-2">
-                          Boshlanish Raqami <span className="text-red-500">*</span>
+                          Dan <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="number"
                           min="1"
                           value={group.from_value || ''}
-                          onChange={(e) => updateQuestionGroup(index, { from_value: parseInt(e.target.value) || 0 })}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value);
+                            updateQuestionGroup(index, { 
+                              from_value: isNaN(value) ? 0 : Math.max(1, value) 
+                            });
+                          }}
+                          onBlur={(e) => {
+                            const value = parseInt(e.target.value);
+                            if (isNaN(value) || value < 1) {
+                              updateQuestionGroup(index, { from_value: 1 });
+                            }
+                          }}
                           placeholder="1"
                           className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
                           required
@@ -332,13 +417,25 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                       </div>
                       <div>
                         <label className="block text-slate-700 mb-2">
-                          Tugash Raqami <span className="text-red-500">*</span>
+                          Gacha <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="number"
                           min="1"
                           value={group.to_value || ''}
-                          onChange={(e) => updateQuestionGroup(index, { to_value: parseInt(e.target.value) || 0 })}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value);
+                            updateQuestionGroup(index, { 
+                              to_value: isNaN(value) ? 0 : Math.max(1, value) 
+                            });
+                          }}
+                          onBlur={(e) => {
+                            const value = parseInt(e.target.value);
+                            const minValue = Math.max(1, group.from_value || 1);
+                            if (isNaN(value) || value < minValue) {
+                              updateQuestionGroup(index, { to_value: minValue });
+                            }
+                          }}
                           placeholder="6"
                           className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
                           required
@@ -484,132 +581,28 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
                     {/* Matching Item Fields */}
                     {isMatchingItem && (
                       <div className="space-y-4 border-t pt-4">
-                        <div>
-                          <label className="block text-slate-700 mb-2">
-                            Sarlavha <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={group.matching_item?.title || ''}
-                            onChange={(e) => updateQuestionGroup(index, {
+                        <AdminMatchingEditor
+                          initialData={{
+                            title: group.matching_item?.title || '',
+                            statement: group.matching_item?.statement || [],
+                            option: group.matching_item?.option || [],
+                            variant_type: group.matching_item?.variant_type || 'letter',
+                            answer_count: group.matching_item?.answer_count || 1,
+                          }}
+                          questionType="matching"
+                          hideQuestionTypeSelector={true}
+                          onChange={(data) => {
+                            updateQuestionGroup(index, {
                               matching_item: {
-                                title: e.target.value,
-                                statement: group.matching_item?.statement || [],
-                                option: group.matching_item?.option || [],
-                                variant_type: group.matching_item?.variant_type || 'letter',
-                                answer_count: group.matching_item?.answer_count || 1,
+                                title: data.title,
+                                statement: data.statement,
+                                option: data.option,
+                                variant_type: data.variant_type,
+                                answer_count: data.answer_count,
                               }
-                            })}
-                            placeholder="Masalan: Match the following headings to paragraphs"
-                            className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
-                            required
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-slate-700 mb-2">
-                              Variant Turi <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                              value={group.matching_item?.variant_type || 'letter'}
-                              onChange={(e) => updateQuestionGroup(index, {
-                                matching_item: {
-                                  title: group.matching_item?.title || '',
-                                  statement: group.matching_item?.statement || [],
-                                  option: group.matching_item?.option || [],
-                                  variant_type: e.target.value as 'letter' | 'number' | 'romain',
-                                  answer_count: group.matching_item?.answer_count || 1,
-                                }
-                              })}
-                              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
-                              required
-                            >
-                              <option value="letter">Harflar (A, B, C...)</option>
-                              <option value="number">Raqamlar (1, 2, 3...)</option>
-                              <option value="romain">Rim raqamlari (I, II, III...)</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-slate-700 mb-2">
-                              Javoblar Soni <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              value={group.matching_item?.answer_count || 1}
-                              onChange={(e) => updateQuestionGroup(index, {
-                                matching_item: {
-                                  title: group.matching_item?.title || '',
-                                  statement: group.matching_item?.statement || [],
-                                  option: group.matching_item?.option || [],
-                                  variant_type: group.matching_item?.variant_type || 'letter',
-                                  answer_count: parseInt(e.target.value) || 1,
-                                }
-                              })}
-                              placeholder="1"
-                              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
-                              required
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-700 mb-2">
-                            Statements (har bir qator alohida) <span className="text-red-500">*</span>
-                          </label>
-                          <textarea
-                            value={(group.matching_item?.statement || []).join('\n')}
-                            onChange={(e) => {
-                              const statements = e.target.value.split('\n').filter(s => s.trim());
-                              updateQuestionGroup(index, {
-                                matching_item: {
-                                  title: group.matching_item?.title || '',
-                                  statement: statements,
-                                  option: group.matching_item?.option || [],
-                                  variant_type: group.matching_item?.variant_type || 'letter',
-                                  answer_count: group.matching_item?.answer_count || 1,
-                                }
-                              });
-                            }}
-                            placeholder="The role of technology in education&#10;Environmental impact of urbanization&#10;Benefits of renewable energy"
-                            rows={5}
-                            className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50 resize-none font-mono text-sm"
-                            required
-                          />
-                          <p className="text-sm text-slate-500 mt-2">
-                            Har bir statement ni yangi qatordan kiriting
-                          </p>
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-700 mb-2">
-                            Options/Variantlar (har bir qator alohida) <span className="text-red-500">*</span>
-                          </label>
-                          <textarea
-                            value={(group.matching_item?.option || []).join('\n')}
-                            onChange={(e) => {
-                              const options = e.target.value.split('\n').filter(o => o.trim());
-                              updateQuestionGroup(index, {
-                                matching_item: {
-                                  title: group.matching_item?.title || '',
-                                  statement: group.matching_item?.statement || [],
-                                  option: options,
-                                  variant_type: group.matching_item?.variant_type || 'letter',
-                                  answer_count: group.matching_item?.answer_count || 1,
-                                }
-                              });
-                            }}
-                            placeholder="Paragraph A&#10;Paragraph B&#10;Paragraph C&#10;Paragraph D"
-                            rows={5}
-                            className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50 resize-none font-mono text-sm"
-                            required
-                          />
-                          <p className="text-sm text-slate-500 mt-2">
-                            Har bir option ni yangi qatordan kiriting
-                          </p>
-                        </div>
+                            });
+                          }}
+                        />
                       </div>
                     )}
                   </div>
@@ -645,14 +638,24 @@ export function ReadingQuestionForm({ testId, passageNumber, onSubmit, onBack }:
           </button>
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || !hasChanges()}
             className="flex-1 flex items-center justify-center gap-2 bg-[#042d62] text-white px-6 py-3 rounded-xl hover:bg-[#053a75] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className="w-5 h-5" />
-            {isSubmitting ? 'Saqlanmoqda...' : 'Saqlash'}
+            {isSubmitting ? 'Saqlanmoqda...' : (initialPassageId ? 'Yangilash' : 'Saqlash')}
           </button>
         </div>
       </form>
+      
+      <SuccessAnimation 
+        show={showSuccessAnimation}
+        onClose={() => {
+          setShowSuccessAnimation(false);
+          onSubmit?.();
+        }}
+        title={initialPassageId ? "Passage muvaffaqiyatli yangilandi!" : "Passage muvaffaqiyatli yaratildi!"}
+        message={`Passage ${passageNumber} barcha savol guruhlari bilan ${initialPassageId ? 'yangilandi' : 'saqlandi'}`}
+      />
     </div>
   );
 }

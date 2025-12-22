@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QuestionPanel } from '../components/QuestionPanel';
 import { CreateTestModal } from '../components/CreateTestModal';
-import { getTests, TestResponse, isOfflineMode } from '../lib/api';
+import { getTests, TestResponse, isOfflineMode } from '../lib/api-cleaned';
 
 export function HomePage() {
   const navigate = useNavigate();

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Headphones, PenTool, Edit2, Save, FileText, Calendar, Check, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, BookOpen, Headphones, PenTool, Edit2, Save, FileText, Calendar, Check, Loader2, AlertCircle, X } from 'lucide-react';
 import { AllQuestionTypesForm } from '../components/AllQuestionTypesForm';
-import { getTestDetail, TestDetail, isOfflineMode } from '../lib/api';
+import { getTestDetail, updateTest, TestDetail, isOfflineMode } from '../lib/api-cleaned';
 
 type EditingSection = {
   type: 'reading' | 'listening' | 'writing';
@@ -22,6 +22,7 @@ export function TestDetailPage() {
   const [editedTitle, setEditedTitle] = useState('');
   const [editingSection, setEditingSection] = useState<EditingSection>(null);
   const [showWritingTaskSelector, setShowWritingTaskSelector] = useState(false);
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   const loadTestDetail = async () => {
     if (!testId) return;
@@ -55,10 +56,24 @@ export function TestDetailPage() {
     loadTestDetail();
   }, [testId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSaveTitle = () => {
+  const handleSaveTitle = async () => {
     if (test) {
-      setTest({ ...test, name: editedTitle });
-      setIsEditing(false);
+      setIsSavingTitle(true);
+      try {
+        const updatedTest = await updateTest(test.id, { name: editedTitle });
+        // Update test state with new name
+        setTest({ 
+          ...test, 
+          name: updatedTest.name,
+          updated_at: updatedTest.updated_at || test.updated_at 
+        });
+        setIsEditing(false);
+      } catch (err) {
+        console.error('Failed to save test title:', err);
+        alert(err instanceof Error ? err.message : 'Test nomini saqlashda xatolik yuz berdi');
+      } finally {
+        setIsSavingTitle(false);
+      }
     }
   };
 
@@ -137,7 +152,7 @@ export function TestDetailPage() {
                   onClick={handleSaveTitle}
                   className="px-4 py-2 bg-[#042d62] hover:bg-[#053a75] text-white rounded-lg flex items-center gap-2 transition-colors"
                 >
-                  <Save className="w-4 h-4" />
+                  {isSavingTitle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Saqlash
                 </button>
                 <button
@@ -195,23 +210,29 @@ export function TestDetailPage() {
           </div>
           
           <div className="space-y-2 text-sm text-slate-600">
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <div>Passage 1:</div>
-              <div className={test.reading_passage1_completed ? 'text-green-600' : 'text-slate-400'}>
-                {test.reading_passage1_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
-              </div>
+              {test.reading_passage1_completed ? (
+                <Check className="w-5 h-5 text-green-600" />
+              ) : (
+                <X className="w-5 h-5 text-red-500" />
+              )}
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <div>Passage 2:</div>
-              <div className={test.reading_passage2_completed ? 'text-green-600' : 'text-slate-400'}>
-                {test.reading_passage2_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
-              </div>
+              {test.reading_passage2_completed ? (
+                <Check className="w-5 h-5 text-green-600" />
+              ) : (
+                <X className="w-5 h-5 text-red-500" />
+              )}
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <div>Passage 3:</div>
-              <div className={test.reading_passage3_completed ? 'text-green-600' : 'text-slate-400'}>
-                {test.reading_passage3_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
-              </div>
+              {test.reading_passage3_completed ? (
+                <Check className="w-5 h-5 text-green-600" />
+              ) : (
+                <X className="w-5 h-5 text-red-500" />
+              )}
             </div>
           </div>
         </div>
@@ -231,29 +252,37 @@ export function TestDetailPage() {
           </div>
           
           <div className="space-y-2 text-sm text-slate-600">
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <div>Part 1:</div>
-              <div className={test.listening_part1_completed ? 'text-green-600' : 'text-slate-400'}>
-                {test.listening_part1_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
-              </div>
+              {test.listening_part1_completed ? (
+                <Check className="w-5 h-5 text-green-600" />
+              ) : (
+                <X className="w-5 h-5 text-red-500" />
+              )}
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <div>Part 2:</div>
-              <div className={test.listening_part2_completed ? 'text-green-600' : 'text-slate-400'}>
-                {test.listening_part2_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
-              </div>
+              {test.listening_part2_completed ? (
+                <Check className="w-5 h-5 text-green-600" />
+              ) : (
+                <X className="w-5 h-5 text-red-500" />
+              )}
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <div>Part 3:</div>
-              <div className={test.listening_part3_completed ? 'text-green-600' : 'text-slate-400'}>
-                {test.listening_part3_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
-              </div>
+              {test.listening_part3_completed ? (
+                <Check className="w-5 h-5 text-green-600" />
+              ) : (
+                <X className="w-5 h-5 text-red-500" />
+              )}
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <div>Part 4:</div>
-              <div className={test.listening_part4_completed ? 'text-green-600' : 'text-slate-400'}>
-                {test.listening_part4_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
-              </div>
+              {test.listening_part4_completed ? (
+                <Check className="w-5 h-5 text-green-600" />
+              ) : (
+                <X className="w-5 h-5 text-red-500" />
+              )}
             </div>
           </div>
         </div>
@@ -273,17 +302,21 @@ export function TestDetailPage() {
           </div>
           
           <div className="space-y-2 text-sm text-slate-600">
-            <div className="flex justify-between">
-              <div>Task1:</div>
-              <div className={test.writing_task1_completed ? 'text-green-600' : 'text-slate-400'}>
-                {test.writing_task1_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
-              </div>
+            <div className="flex justify-between items-center">
+              <div>Task 1:</div>
+              {test.writing_task1_completed ? (
+                <Check className="w-5 h-5 text-green-600" />
+              ) : (
+                <X className="w-5 h-5 text-red-500" />
+              )}
             </div>
-            <div className="flex justify-between">
-              <div>Task2:</div>
-              <div className={test.writing_task2_completed ? 'text-green-600' : 'text-slate-400'}>
-                {test.writing_task2_completed ? <Check className="w-4 h-4 inline" /> : <span>—</span>}
-              </div>
+            <div className="flex justify-between items-center">
+              <div>Task 2:</div>
+              {test.writing_task2_completed ? (
+                <Check className="w-5 h-5 text-green-600" />
+              ) : (
+                <X className="w-5 h-5 text-red-500" />
+              )}
             </div>
           </div>
         </div>

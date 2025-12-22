@@ -8,8 +8,10 @@ import {
   getTestDetail,
   PassageType,
   CriteriaType,
-  VariantType
-} from '../lib/api';
+  VariantType,
+  getReadingPassages,
+  updateReadingPassage
+} from '../lib/api-cleaned';
 import { TableCompletionEditor, TableCompletionData } from './TableCompletionEditor';
 import { deserializeTableData, serializeTableData } from '../lib/tableCompletionHelper';
 
@@ -36,24 +38,23 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Question type to field mapping
-  const questionTypeToField: Record<string, 'gap_filling' | 'identify_info' | 'matching_item'> = {
-    // Gap-filling types
+  const questionTypeMapping: Record<string, 'gap_filling' | 'identify_info' | 'matching_item'> = {
+    // Gap filling types
     sentence_completion: 'gap_filling',
     summary_completion: 'gap_filling',
     table_completion: 'gap_filling',
     flowchart_completion: 'gap_filling',
     diagram_labeling: 'gap_filling',
     short_answer: 'gap_filling',
-    
     // Identifying types
     true_false_not_given: 'identify_info',
     yes_no_not_given: 'identify_info',
-    
     // Matching types
     matching_headings: 'matching_item',
     matching_information: 'matching_item',
     matching_sentence_endings: 'matching_item',
     matching_features: 'matching_item',
+    // Multiple choice
     multiple_choice: 'matching_item',
   };
 
@@ -107,8 +108,15 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
 
   const addQuestionGroup = (passageIndex: number) => {
     const updated = [...passages];
+    const currentGroups = updated[passageIndex].groups;
+    
+    // Get last selected question type from the most recent group in this passage
+    const lastGroupType = currentGroups.length > 0 
+      ? currentGroups[currentGroups.length - 1].question_type 
+      : '';
+    
     updated[passageIndex].groups.push({
-      question_type: '',
+      question_type: lastGroupType || '', // Auto-fill with last used type
       from_value: 0,
       to_value: 0,
     });
@@ -117,10 +125,10 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
     // Expand the new group
     const key = passageIndex;
     const groupIndex = (updated[passageIndex].groups.length - 1).toString();
-    const currentGroups = expandedGroups[key] || [];
+    const currentExpanded = expandedGroups[key] || [];
     setExpandedGroups({
       ...expandedGroups,
-      [key]: [...currentGroups, groupIndex],
+      [key]: [...currentExpanded, groupIndex],
     });
   };
 
@@ -180,6 +188,84 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
       if (testDetail.reading) {
         readingId = testDetail.reading;
         console.log('✅ Reading section already exists:', readingId);
+        
+        // Check if passages already exist by checking completed flags
+        const hasExistingPassages = testDetail.reading_passage1_completed || 
+                                     testDetail.reading_passage2_completed || 
+                                     testDetail.reading_passage3_completed;
+        
+        if (hasExistingPassages) {
+          // Get existing passages and update them
+          const existingPassages = await getReadingPassages(readingId);
+          console.log('📦 Existing passages found:', existingPassages);
+          
+          // Update each passage individually
+          for (let i = 0; i < passages.length; i++) {
+            const passage = passages[i];
+            const passageType = `passage${i + 1}` as PassageType;
+            
+            // Find existing passage by type
+            const existingPassage = Array.isArray(existingPassages) 
+              ? existingPassages.find((p: any) => p.passage_type === passageType)
+              : null;
+            
+            if (existingPassage) {
+              // Update existing passage
+              console.log(`🔄 Updating existing ${passageType}:`, existingPassage.id);
+              
+              const updatePayload = {
+                title: passage.title,
+                body: passage.body,
+                groups: passage.groups.map(group => {
+                  const convertedGroup = { ...group };
+                  
+                  // Convert table_completion to coordinate-based format (row:col)
+                  if (convertedGroup.table_completion) {
+                    const tableDetailsCoordinate: { [key: string]: string } = {};
+                    
+                    if (convertedGroup.table_completion.table_details && typeof convertedGroup.table_completion.table_details === 'object') {
+                      const details = convertedGroup.table_completion.table_details as any;
+                      
+                      // Check if it's already coordinate-based (has "row:col" keys)
+                      if (Object.keys(details).some(key => key.includes(':'))) {
+                        // Already coordinate-based
+                        Object.assign(tableDetailsCoordinate, details);
+                      } else if (details.rows && Array.isArray(details.rows)) {
+                        // Convert rows to coordinate-based format (row:col)
+                        details.rows.forEach((row: any[], rowIndex: number) => {
+                          if (Array.isArray(row)) {
+                            row.forEach((cell: any, colIndex: number) => {
+                              // Extract content from TableCell object
+                              const content = typeof cell === 'object' && cell !== null 
+                                ? (cell.content || '') 
+                                : String(cell || '');
+                              // Use "row:col" format as key
+                              tableDetailsCoordinate[`${rowIndex}:${colIndex}`] = content;
+                            });
+                          }
+                        });
+                      }
+                    }
+                    
+                    convertedGroup.table_completion = {
+                      principle: convertedGroup.table_completion.principle,
+                      table_details: tableDetailsCoordinate,
+                    } as any;
+                  }
+                  
+                  return convertedGroup;
+                }),
+              };
+              
+              await updateReadingPassage(existingPassage.id, updatePayload);
+            }
+          }
+          
+          alert('Barcha reading passages muvaffaqiyatli yangilandi!');
+          onSubmit?.();
+          setIsSubmitting(false);
+          return;
+        }
       } else {
         // Create reading section if it doesn't exist
         const readingSection = await createReading(testId);
@@ -194,7 +280,66 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
           passage_type: `passage${index + 1}` as PassageType,
           title: passage.title,
           body: passage.body,
-          groups: passage.groups,
+          groups: passage.groups.map(group => {
+            const convertedGroup = { ...group };
+            
+            // Convert table_completion to coordinate-based format (row:col)
+            if (convertedGroup.table_completion) {
+              const tableDetailsCoordinate: { [key: string]: string } = {};
+              
+              if (convertedGroup.table_completion.table_details && typeof convertedGroup.table_completion.table_details === 'object') {
+                const details = convertedGroup.table_completion.table_details as any;
+                
+                // Check if it's already coordinate-based (has "row:col" keys)
+                if (Object.keys(details).some(key => key.includes(':'))) {
+                  // Already coordinate-based
+                  Object.assign(tableDetailsCoordinate, details);
+                } else if (details.rows && Array.isArray(details.rows)) {
+                  // Convert rows to coordinate-based format (row:col)
+                  details.rows.forEach((row: any[], rowIndex: number) => {
+                    if (Array.isArray(row)) {
+                      row.forEach((cell: any, colIndex: number) => {
+                        // Extract content from TableCell object
+                        const content = typeof cell === 'object' && cell !== null 
+                          ? (cell.content || '') 
+                          : String(cell || '');
+                        // Use "row:col" format as key
+                        tableDetailsCoordinate[`${rowIndex}:${colIndex}`] = content;
+                      });
+                    }
+                  });
+                } else {
+                  // Try parsing from gap_filling.body if table_completion not properly structured
+                  if (group.gap_filling?.body) {
+                    try {
+                      const parsed = JSON.parse(group.gap_filling.body);
+                      if (parsed.rows && Array.isArray(parsed.rows)) {
+                        parsed.rows.forEach((row: any[], rowIndex: number) => {
+                          if (Array.isArray(row)) {
+                            row.forEach((cell: any, colIndex: number) => {
+                              const content = typeof cell === 'object' && cell !== null 
+                                ? (cell.content || '') 
+                                : String(cell || '');
+                              tableDetailsCoordinate[`${rowIndex}:${colIndex}`] = content;
+                            });
+                          }
+                        });
+                      }
+                    } catch (e) {
+                      console.error('Failed to parse gap_filling.body:', e);
+                    }
+                  }
+                }
+              }
+              
+              convertedGroup.table_completion = {
+                principle: convertedGroup.table_completion.principle,
+                table_details: tableDetailsCoordinate,
+              } as any;
+            }
+            
+            return convertedGroup;
+          }),
         })),
       };
 
@@ -214,7 +359,7 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
   };
 
   const renderGroupFields = (passageIndex: number, groupIndex: number, group: QuestionGroup) => {
-    const fieldType = questionTypeToField[group.question_type];
+    const fieldType = questionTypeMapping[group.question_type];
 
     if (fieldType === 'gap_filling') {
       return (
@@ -246,33 +391,26 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
                 Table Tuzilishi <span className="text-red-500">*</span>
               </label>
               <TableCompletionEditor
-                data={(() => {
-                  try {
-                    const parsed = JSON.parse(group.gap_filling?.body || '{}');
-                    return {
-                      principle: group.gap_filling?.principle || 'NMT_TWO',
-                      instruction: parsed.instruction,
-                      rows: parsed.rows || [],
-                      questionNumberStart: group.from_value,
-                    };
-                  } catch {
-                    return {
-                      principle: group.gap_filling?.principle || 'NMT_TWO',
-                      rows: [],
-                      questionNumberStart: group.from_value,
-                    };
-                  }
-                })()}
+                data={{
+                  principle: group.table_completion?.principle || group.gap_filling?.principle || 'NMT_TWO',
+                  instruction: (group.table_completion?.table_details as any)?.instruction,
+                  rows: (group.table_completion?.table_details as any)?.rows || [],
+                  questionNumberStart: group.from_value,
+                }}
                 onChange={(tableData) => {
                   updateQuestionGroup(passageIndex, groupIndex, {
+                    table_completion: {
+                      principle: tableData.principle,
+                      table_details: {
+                        instruction: tableData.instruction,
+                        rows: tableData.rows,
+                      },
+                    } as any,
                     gap_filling: {
                       ...group.gap_filling,
                       title: group.gap_filling?.title || '',
                       principle: tableData.principle,
-                      body: JSON.stringify({
-                        instruction: tableData.instruction,
-                        rows: tableData.rows,
-                      }),
+                      body: group.gap_filling?.body || '',
                     },
                   });
                 }}
@@ -687,6 +825,8 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
                                       identify_info: undefined,
                                       matching_item: undefined,
                                     });
+                                    // Save last selected question type to localStorage
+                                    localStorage.setItem('lastSelectedQuestionType_reading', e.target.value);
                                   }}
                                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
                                   required
@@ -704,7 +844,7 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
                                   <label className="block text-slate-700 mb-2 text-sm">
-                                    From <span className="text-red-500">*</span>
+                                    Dan <span className="text-red-500">*</span>
                                   </label>
                                   <input
                                     type="number"
@@ -717,7 +857,7 @@ export function BulkReadingForm({ testId, onSubmit, onBack }: BulkReadingFormPro
                                 </div>
                                 <div>
                                   <label className="block text-slate-700 mb-2 text-sm">
-                                    To <span className="text-red-500">*</span>
+                                    Gacha <span className="text-red-500">*</span>
                                   </label>
                                   <input
                                     type="number"

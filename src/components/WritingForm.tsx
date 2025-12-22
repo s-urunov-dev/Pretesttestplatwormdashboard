@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PenTool, Image as ImageIcon, FileText, Loader2 } from 'lucide-react';
-import { WritingType } from '../lib/api';
+import { WritingType } from '../lib/api-cleaned';
+import { SuccessAnimation } from './SuccessAnimation';
 
 interface WritingFormProps {
   testId: number;
@@ -18,6 +19,7 @@ export function WritingForm({ testId, taskType, onSuccess, existingData }: Writi
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   
   // Track original values to detect changes
   const [originalQuestion, setOriginalQuestion] = useState('');
@@ -60,6 +62,20 @@ export function WritingForm({ testId, taskType, onSuccess, existingData }: Writi
 
   // Check if image has changed (user uploaded new file)
   const imageChanged = image !== null;
+  
+  // Check if form data has changed from original
+  const hasChanges = () => {
+    if (!existingData?.id) {
+      // CREATE mode - always allow submit if form is valid
+      return true;
+    }
+    
+    // UPDATE mode - check if anything changed
+    const questionChanged = question.trim() !== originalQuestion.trim();
+    const imageChangedFromOriginal = imageChanged; // User uploaded new image
+    
+    return questionChanged || imageChangedFromOriginal;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +100,7 @@ export function WritingForm({ testId, taskType, onSuccess, existingData }: Writi
     console.log('====================================');
     
     try {
-      const { createWriting, updateWriting, patchWriting } = await import('../lib/api');
+      const { createWriting, updateWriting, patchWriting } = await import('../lib/api-cleaned');
       
       if (hasExistingId && existingData?.id) {
         // UPDATE existing task
@@ -117,8 +133,6 @@ export function WritingForm({ testId, taskType, onSuccess, existingData }: Writi
         console.log('⏳ Sending PATCH request...');
         const result = await patchWriting(existingData.id, updateData);
         console.log('✅ PATCH request completed:', result);
-        
-        alert('✅ Writing task yangilandi!');
       } else {
         // CREATE new task
         console.log('✅ CREATE MODE - Creating new task');
@@ -142,7 +156,6 @@ export function WritingForm({ testId, taskType, onSuccess, existingData }: Writi
         
         const result = await createWriting(createData);
         console.log('✅ CREATE request completed:', result);
-        alert('✅ Writing task yaratildi!');
       }
       
       console.log('====================================');
@@ -150,6 +163,7 @@ export function WritingForm({ testId, taskType, onSuccess, existingData }: Writi
       console.log('====================================');
       
       onSuccess?.();
+      setShowSuccessAnimation(true);
     } catch (error) {
       console.error('====================================');
       console.error('❌ SUBMISSION FAILED');
@@ -262,7 +276,7 @@ export function WritingForm({ testId, taskType, onSuccess, existingData }: Writi
           <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
             <button
               type="submit"
-              disabled={loading || !question.trim() || (isTask1 && !image && !imagePreview)}
+              disabled={loading || !question.trim() || (isTask1 && !image && !imagePreview) || !hasChanges()}
               className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#042d62] to-[#0369a1] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -280,6 +294,14 @@ export function WritingForm({ testId, taskType, onSuccess, existingData }: Writi
           </div>
         </form>
       </div>
+      
+      {/* Success Animation */}
+      <SuccessAnimation 
+        show={showSuccessAnimation}
+        onClose={() => setShowSuccessAnimation(false)}
+        title="Muvaffaqiyatli saqlandi!"
+        message={`Writing ${isTask1 ? 'Task1' : 'Task2'} muvaffaqiyatli saqlandi`}
+      />
     </div>
   );
 }

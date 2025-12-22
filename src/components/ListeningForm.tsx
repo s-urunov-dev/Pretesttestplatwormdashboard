@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Save, Loader2, Plus, Trash2, ChevronDown, ChevronUp, Upload, RefreshCw, CheckCircle2 } from 'lucide-react';
 import {
   QuestionGroup,
@@ -8,9 +8,12 @@ import {
   createListeningAudio,
   updateListeningAudio,
   ListeningAudioResponse,
-} from '../lib/api';
+} from '../lib/api-cleaned';
 import { TableCompletionEditor, TableCompletionData } from './TableCompletionEditor';
+import { TableCompletionEditorIndexed, IndexedTableData } from './TableCompletionEditorIndexed';
 import { deserializeTableData, serializeTableData, tableDataToBackend } from '../lib/tableCompletionHelper';
+import { indexedTableDataToBackend, indexedTableDataFromBackend } from '../lib/tableCompletionHelperIndexed';
+import { SuccessAnimation } from './SuccessAnimation';
 
 interface ListeningFormProps {
   questionTypes: QuestionType[];
@@ -40,15 +43,22 @@ export function ListeningForm({
   const [groups, setGroups] = useState<QuestionGroup[]>(initialGroups);
   const [expandedGroups, setExpandedGroups] = useState<number[]>(initialGroups.map((_, i) => i));
   const [selectedQuestionType, setSelectedQuestionType] = useState<number | null>(null);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  
+  // Track original values to detect changes
+  const [originalTitle, setOriginalTitle] = useState(initialTitle);
+  const [originalGroups, setOriginalGroups] = useState<QuestionGroup[]>(initialGroups);
 
   // Sync with initial values when they change - use JSON.stringify to avoid infinite loops
   React.useEffect(() => {
     setTitle(initialTitle);
     setAudioId(initialAudioId);
     setAudioUrl(initialAudioUrl);
+    setOriginalTitle(initialTitle);
     if (JSON.stringify(initialGroups) !== JSON.stringify(groups)) {
       setGroups(initialGroups);
       setExpandedGroups(initialGroups.map((_, i) => i));
+      setOriginalGroups(initialGroups);
     }
   }, [initialTitle, initialAudioId, initialAudioUrl]); // Remove initialGroups from deps
 
@@ -60,13 +70,10 @@ export function ListeningForm({
   };
 
   const addQuestionGroup = (questionType: QuestionType) => {
-    const lastGroup = groups[groups.length - 1];
-    const fromValue = lastGroup ? lastGroup.to_value + 1 : 1;
-
     const newGroup: QuestionGroup = {
       question_type: questionType.type,
-      from_value: fromValue,
-      to_value: fromValue,
+      from_value: 1, // Changed from 0 to 1 (minimum valid value)
+      to_value: 1,   // Changed from 0 to 1 (minimum valid value)
     };
 
     setGroups([...groups, newGroup]);
@@ -91,6 +98,21 @@ export function ListeningForm({
   const removeGroup = (index: number) => {
     setGroups(groups.filter((_, i) => i !== index));
   };
+  
+  // Check if form data has changed from original
+  const hasChanges = () => {
+    if (!initialAudioId) {
+      // CREATE mode - always allow submit if form is valid
+      return true;
+    }
+    
+    // UPDATE mode - check if anything changed
+    const titleChanged = title.trim() !== originalTitle.trim();
+    const audioChanged = audioFile !== null; // User selected new audio
+    const groupsChanged = JSON.stringify(groups) !== JSON.stringify(originalGroups);
+    
+    return titleChanged || audioChanged || groupsChanged;
+  };
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -108,8 +130,53 @@ export function ListeningForm({
       return;
     }
 
+    // Validate each group's from_value and to_value
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      
+      if (!group.from_value || group.from_value <= 0) {
+        alert(`Guruh ${i + 1}: "Dan" qiymatini to'ldiring (1 dan katta bo'lishi kerak)`);
+        return;
+      }
+      
+      if (!group.to_value || group.to_value <= 0) {
+        alert(`Guruh ${i + 1}: "Gacha" qiymatini to'ldiring (1 dan katta bo'lishi kerak)`);
+        return;
+      }
+      
+      if (group.to_value < group.from_value) {
+        alert(`Guruh ${i + 1}: "Gacha" qiymati "Dan" qiymatidan katta yoki teng bo'lishi kerak`);
+        return;
+      }
+      
+      // Validate map_diagram if it's map_diagram_labeling
+      if (group.question_type === 'map_diagram_labeling') {
+        if (!group.map_diagram) {
+          alert(`Guruh ${i + 1}: Map/Diagram ma'lumotlari to'ldirilmagan`);
+          return;
+        }
+        if (!group.map_diagram.title || group.map_diagram.title.trim().length === 0) {
+          alert(`Guruh ${i + 1}: Map/Diagram sarlavhasini to'ldiring`);
+          return;
+        }
+        if (!group.map_diagram.image) {
+          alert(`Guruh ${i + 1}: Map/Diagram rasmini yuklang`);
+          return;
+        }
+      }
+    }
+
     // Clean up groups before saving
-    const cleanedGroups = groups.map((group) => {
+    const cleanedGroups = groups.map((group, index) => {
+      console.log(`\n🧹 Cleaning group ${index}:`, {
+        question_type: group.question_type,
+        from_value: group.from_value,
+        to_value: group.to_value,
+        has_map_diagram: !!group.map_diagram,
+        map_diagram_title: group.map_diagram?.title,
+        map_diagram_image_type: group.map_diagram?.image instanceof File ? 'File' : typeof group.map_diagram?.image,
+      });
+      
       const cleanedGroup = { ...group };
 
       if (cleanedGroup.identify_info?.question) {
@@ -127,14 +194,26 @@ export function ListeningForm({
         };
       }
 
+      console.log(`✅ Cleaned group ${index}:`, {
+        question_type: cleanedGroup.question_type,
+        from_value: cleanedGroup.from_value,
+        to_value: cleanedGroup.to_value,
+        has_map_diagram: !!cleanedGroup.map_diagram,
+      });
+
       return cleanedGroup;
     });
+
+    console.log('\n📦 Final cleaned groups before onSave:', cleanedGroups);
 
     await onSave({
       title: title.trim(),
       audioFile: audioFile || undefined,
       groups: cleanedGroups,
     });
+    
+    // Show success animation
+    setShowSuccessAnimation(true);
   };
 
   const getQuestionTypeLabel = (type: string): string => {
@@ -316,17 +395,19 @@ export function ListeningForm({
               ].includes(questionTypeName);
 
               const isIdentifyInfo = [
-                'matching_information',
                 'true_false_not_given',
                 'yes_no_not_given',
               ].includes(questionTypeName);
 
               const isMatchingItem = [
                 'matching_headings',
+                'matching_information',
                 'matching_sentence_endings',
                 'matching_features',
                 'multiple_choice',
               ].includes(questionTypeName);
+
+              const isMapDiagram = questionTypeName === 'map_diagram_labeling';
 
               return (
                 <div key={index} className="border border-slate-200 rounded-lg overflow-hidden">
@@ -408,10 +489,25 @@ export function ListeningForm({
                           </label>
                           <input
                             type="number"
-                            value={group.from_value}
-                            onChange={(e) => updateGroup(index, { from_value: parseInt(e.target.value) || 0 })}
+                            value={group.from_value || ''}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value);
+                              // If empty or NaN, keep as is for user to type
+                              // If valid number, ensure it's at least 1
+                              updateGroup(index, { 
+                                from_value: isNaN(value) ? 0 : Math.max(1, value) 
+                              });
+                            }}
+                            onBlur={(e) => {
+                              // On blur, ensure minimum value of 1
+                              const value = parseInt(e.target.value);
+                              if (isNaN(value) || value < 1) {
+                                updateGroup(index, { from_value: 1 });
+                              }
+                            }}
                             className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
                             min="1"
+                            placeholder="1"
                           />
                         </div>
                         <div>
@@ -420,10 +516,26 @@ export function ListeningForm({
                           </label>
                           <input
                             type="number"
-                            value={group.to_value}
-                            onChange={(e) => updateGroup(index, { to_value: parseInt(e.target.value) || 0 })}
+                            value={group.to_value || ''}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value);
+                              // If empty or NaN, keep as is for user to type
+                              // If valid number, ensure it's at least 1
+                              updateGroup(index, { 
+                                to_value: isNaN(value) ? 0 : Math.max(1, value) 
+                              });
+                            }}
+                            onBlur={(e) => {
+                              // On blur, ensure minimum value of 1 or from_value (whichever is greater)
+                              const value = parseInt(e.target.value);
+                              const minValue = Math.max(1, group.from_value || 1);
+                              if (isNaN(value) || value < minValue) {
+                                updateGroup(index, { to_value: minValue });
+                              }
+                            }}
                             className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                            min={group.from_value}
+                            min={Math.max(1, group.from_value || 1)}
+                            placeholder={String(Math.max(1, group.from_value || 1))}
                           />
                         </div>
                       </div>
@@ -456,27 +568,22 @@ export function ListeningForm({
                             <div>
                               <label className="block text-sm text-slate-700 mb-2">Table Tuzilishi</label>
                               <TableCompletionEditor
-                                data={(() => {
-                                  // Load from table_completion field, not gap_filling!
-                                  if (group.table_completion) {
-                                    return {
-                                      principle: group.table_completion.principle || 'NMT_TWO',
-                                      instruction: group.table_completion.table_details?.instruction,
-                                      rows: group.table_completion.table_details?.rows || [],
-                                      questionNumberStart: group.from_value,
-                                    };
-                                  }
-                                  return {
-                                    principle: 'NMT_TWO',
-                                    rows: [],
-                                    questionNumberStart: group.from_value,
-                                  };
-                                })()}
+                                data={{
+                                  principle: group.table_completion?.principle || 'ONE_WORD',
+                                  instruction: (group.table_completion?.table_details as any)?.instruction,
+                                  rows: (group.table_completion?.table_details as any)?.rows || [],
+                                  questionNumberStart: group.from_value || 1,
+                                }}
                                 onChange={(tableData) => {
-                                  // Save to table_completion field using tableDataToBackend helper
-                                  const backendFormat = tableDataToBackend(tableData);
+                                  // Store full structure in table_details
                                   updateGroup(index, {
-                                    table_completion: backendFormat,
+                                    table_completion: {
+                                      principle: tableData.principle,
+                                      table_details: {
+                                        instruction: tableData.instruction,
+                                        rows: tableData.rows,
+                                      },
+                                    } as any,
                                   });
                                 }}
                                 mode="edit"
@@ -699,6 +806,93 @@ export function ListeningForm({
                           </div>
                         </div>
                       )}
+
+                      {/* Map Diagram Labeling Fields */}
+                      {isMapDiagram && (
+                        <div className="space-y-4 pt-4 border-t border-slate-300">
+                          <div>
+                            <label className="block text-sm text-slate-700 mb-2">
+                              Sarlavha <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={group.map_diagram?.title || ''}
+                              onChange={(e) =>
+                                updateGroup(index, {
+                                  map_diagram: {
+                                    title: e.target.value,
+                                    image: group.map_diagram?.image || '',
+                                  },
+                                })
+                              }
+                              placeholder="Masalan: Label the following map..."
+                              maxLength={25}
+                              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                            />
+                            <p className="text-xs text-slate-500 mt-1">Maksimal 25 ta belgi</p>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-slate-700 mb-2">
+                              Map/Diagram Rasmi <span className="text-red-500">*</span>
+                            </label>
+                            <div className="space-y-3">
+                              {group.map_diagram?.image && (
+                                <div className="relative border-2 border-slate-300 rounded-xl overflow-hidden shadow-md">
+                                  <img
+                                    src={typeof group.map_diagram.image === 'string' ? group.map_diagram.image : URL.createObjectURL(group.map_diagram.image)}
+                                    alt="Map/Diagram"
+                                    className="w-full max-h-96 object-contain bg-slate-50"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateGroup(index, {
+                                        map_diagram: {
+                                          title: group.map_diagram?.title || '',
+                                          image: '',
+                                        },
+                                      })
+                                    }
+                                    className="absolute top-3 right-3 p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 shadow-lg transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              )}
+                              
+                              {!group.map_diagram?.image && (
+                                <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50 hover:bg-slate-100 transition-colors">
+                                  <div className="w-16 h-16 bg-gradient-to-br from-slate-200 to-slate-300 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <Upload className="w-8 h-8 text-slate-500" />
+                                  </div>
+                                  <p className="text-slate-600 mb-4">Rasm yuklang</p>
+                                  <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#042d62] text-white rounded-xl hover:bg-[#053a75] cursor-pointer transition-all shadow-md hover:shadow-lg">
+                                    <Upload className="w-4 h-4" />
+                                    Fayl Tanlash
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          updateGroup(index, {
+                                            map_diagram: {
+                                              title: group.map_diagram?.title || '',
+                                              image: file,
+                                            },
+                                          });
+                                        }
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -713,7 +907,7 @@ export function ListeningForm({
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !hasChanges()}
           className="flex items-center gap-3 px-8 py-3.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40"
         >
           {saving ? (
@@ -724,11 +918,19 @@ export function ListeningForm({
           ) : (
             <>
               <CheckCircle2 className="w-5 h-5" />
-              <span className="font-medium">Saqlash</span>
+              <span className="font-medium">{initialAudioId ? 'Yangilash' : 'Saqlash'}</span>
             </>
           )}
         </button>
       </div>
+
+      {/* Success Animation */}
+      <SuccessAnimation 
+        show={showSuccessAnimation}
+        onClose={() => setShowSuccessAnimation(false)}
+        title={initialAudioId ? "Muvaffaqiyatli yangilandi!" : "Muvaffaqiyatli saqlandi!"}
+        message={`Listening part muvaffaqiyatli ${initialAudioId ? 'yangilandi' : 'saqlandi'}`}
+      />
     </div>
   );
 }

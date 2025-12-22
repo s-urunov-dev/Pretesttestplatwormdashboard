@@ -2,56 +2,70 @@ import { TableCompletionData, TableCell } from '../components/TableCompletionEdi
 import { CriteriaType } from './api';
 
 /**
- * Backend model structure:
+ * Backend model structure (NEW API format):
  * {
  *   principle: CriteriaType,
- *   row_count: number,
- *   column_counts: string[][],  // 2D array where each row can have different columns
- *   table_details: JSONField
+ *   table_details: { "0": "text", "1": "text", ... }  // Index-based: only cell text content
  * }
+ * 
+ * Frontend needs to reconstruct the table structure from this flat data.
+ * We'll store metadata separately to enable reconstruction.
  */
 
 export interface BackendTableCompletion {
   principle: CriteriaType;
-  row_count: number;
-  column_counts: string[][];
   table_details: {
-    instruction?: string;
-    rows: TableCell[][];
+    [key: string]: string; // Index-based: { "0": "Swimming", "1": "", ... }
   };
 }
 
 /**
- * Convert frontend TableCompletionData to backend format
+ * Convert frontend TableCompletionData to backend format (index-based)
+ * Only stores cell content as flat index-based object
  */
 export function tableDataToBackend(data: TableCompletionData): BackendTableCompletion {
-  // Calculate column_counts - 2D array representing the structure
-  const column_counts: string[][] = data.rows.map((row) => {
-    return row.map((cell, index) => {
-      // Store cell metadata as string (can be extended later)
-      return `col_${index}`;
+  const table_details: { [key: string]: string } = {};
+  
+  let index = 0;
+  // Flatten rows into index-based format - only store content text
+  data.rows.forEach((row) => {
+    row.forEach((cell) => {
+      // Store only the text content, not the whole cell object
+      table_details[index.toString()] = cell.content || '';
+      index++;
     });
   });
 
   return {
     principle: data.principle,
-    row_count: data.rows.length,
-    column_counts,
-    table_details: {
-      instruction: data.instruction,
-      rows: data.rows,
-    },
+    table_details,
   };
 }
 
 /**
  * Convert backend format to frontend TableCompletionData
+ * We need to also store/retrieve the table structure (rows/columns layout)
+ * For now, we'll store the original rows structure in a separate field
  */
 export function tableDataFromBackend(backend: BackendTableCompletion, questionNumberStart: number = 1): TableCompletionData {
+  const details = backend.table_details as any;
+  
+  // If it has instruction and rows (this means we're storing the full structure)
+  if (details.instruction !== undefined || details.rows !== undefined) {
+    return {
+      principle: backend.principle,
+      instruction: details.instruction,
+      rows: details.rows || [],
+      questionNumberStart,
+    };
+  }
+  
+  // Pure index-based format: can't reconstruct table structure without metadata
+  // Return empty for now
   return {
     principle: backend.principle,
-    instruction: backend.table_details.instruction,
-    rows: backend.table_details.rows || [],
+    instruction: undefined,
+    rows: [],
     questionNumberStart,
   };
 }

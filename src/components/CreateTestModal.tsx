@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Loader2, WifiOff } from 'lucide-react';
-import { createTest, createReading, createListening, TestResponse, isOfflineMode } from '../lib/api';
+import { createTest, createReading, createListening, TestResponse, isOfflineMode } from '../lib/api-cleaned';
 
 interface CreateTestModalProps {
   onClose: () => void;
