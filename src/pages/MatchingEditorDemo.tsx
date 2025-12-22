@@ -6,7 +6,7 @@ export function MatchingEditorDemo() {
   const [data, setData] = useState<MatchingQuestionData>({
     title: '',
     statement: [],
-    option: [],
+    option: [{ A: '', B: '', C: '', D: '' }], // CORRECT: array of objects
     variant_type: 'letter',
     answer_count: 1,
   });

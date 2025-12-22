@@ -211,28 +211,52 @@ export function TestDetailPage() {
           
           <div className="space-y-2 text-sm text-slate-600">
             <div className="flex justify-between items-center">
-              <div>Passage 1:</div>
-              {test.reading_passage1_completed ? (
-                <Check className="w-5 h-5 text-green-600" />
-              ) : (
-                <X className="w-5 h-5 text-red-500" />
-              )}
+              <div className="flex items-center gap-2">
+                <span>Passage 1:</span>
+                {test.reading_passage1_completed ? (
+                  <Check className="w-5 h-5 text-green-600" />
+                ) : (
+                  <X className="w-5 h-5 text-red-500" />
+                )}
+              </div>
+              <button
+                onClick={() => navigate(`/test/${testId}/reading/passage1`)}
+                className="px-3 py-1 text-xs font-medium text-[#042d62] hover:bg-blue-50 rounded-lg transition-colors"
+              >
+                {test.reading_passage1_completed ? 'Tahrirlash' : 'Qo\'shish'}
+              </button>
             </div>
             <div className="flex justify-between items-center">
-              <div>Passage 2:</div>
-              {test.reading_passage2_completed ? (
-                <Check className="w-5 h-5 text-green-600" />
-              ) : (
-                <X className="w-5 h-5 text-red-500" />
-              )}
+              <div className="flex items-center gap-2">
+                <span>Passage 2:</span>
+                {test.reading_passage2_completed ? (
+                  <Check className="w-5 h-5 text-green-600" />
+                ) : (
+                  <X className="w-5 h-5 text-red-500" />
+                )}
+              </div>
+              <button
+                onClick={() => navigate(`/test/${testId}/reading/passage2`)}
+                className="px-3 py-1 text-xs font-medium text-[#042d62] hover:bg-blue-50 rounded-lg transition-colors"
+              >
+                {test.reading_passage2_completed ? 'Tahrirlash' : 'Qo\'shish'}
+              </button>
             </div>
             <div className="flex justify-between items-center">
-              <div>Passage 3:</div>
-              {test.reading_passage3_completed ? (
-                <Check className="w-5 h-5 text-green-600" />
-              ) : (
-                <X className="w-5 h-5 text-red-500" />
-              )}
+              <div className="flex items-center gap-2">
+                <span>Passage 3:</span>
+                {test.reading_passage3_completed ? (
+                  <Check className="w-5 h-5 text-green-600" />
+                ) : (
+                  <X className="w-5 h-5 text-red-500" />
+                )}
+              </div>
+              <button
+                onClick={() => navigate(`/test/${testId}/reading/passage3`)}
+                className="px-3 py-1 text-xs font-medium text-[#042d62] hover:bg-blue-50 rounded-lg transition-colors"
+              >
+                {test.reading_passage3_completed ? 'Tahrirlash' : 'Qo\'shish'}
+              </button>
             </div>
           </div>
         </div>

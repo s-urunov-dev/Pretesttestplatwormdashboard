@@ -1004,78 +1004,174 @@ export function AddQuestionPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Top Navigation - Passage/Part/Task Selection */}
-        <header className="bg-white border-b border-slate-200 px-8 py-4">
-          <div className="flex items-center gap-4">
-            {selectedSection === 'reading' && (
-              <>
+        <header className="bg-white border-b border-slate-200 px-8 py-6">
+          {/* Reading Passages */}
+          {selectedSection === 'reading' && (
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Reading Passage</h3>
+              <div className="flex flex-wrap gap-3">
                 {(['passage1', 'passage2', 'passage3', 'bulk_passages'] as const).map((type) => {
                   const passageExists = type !== 'bulk_passages' && passages.some((p: any) => p.passage_type === type);
+                  const isSelected = selectedSubType === type;
+                  
                   return (
                     <button
                       key={type}
                       onClick={() => setSelectedSubType(type)}
-                      className={`px-6 py-2 rounded-lg transition-all ${
-                        selectedSubType === type
-                          ? 'bg-[#042d62] text-white shadow-md'
-                          : passageExists
-                          ? 'bg-green-100 text-green-800 hover:bg-green-200 border border-green-300'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
+                      className={`
+                        group relative px-5 py-3 rounded-xl text-sm font-medium 
+                        transition-all duration-200 ease-out
+                        flex items-center gap-3 border-2
+                        ${isSelected
+                          ? 'bg-[#042d62] text-white border-[#042d62] shadow-lg shadow-[#042d62]/20 scale-105'
+                          : 'bg-white text-slate-700 border-slate-300 hover:border-[#042d62] hover:shadow-md hover:scale-102'
+                        }
+                      `}
                     >
-                      {passageExists && '✅ '}
-                      {type === 'bulk_passages' ? 'Bulk Passages' : `Passage ${type.slice(-1)}`}
+                      {/* Number Badge */}
+                      <span className={`
+                        w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+                        transition-all duration-200
+                        ${isSelected
+                          ? 'bg-white text-[#042d62]'
+                          : 'bg-slate-100 text-slate-600 group-hover:bg-[#042d62] group-hover:text-white'
+                        }
+                      `}>
+                        {type === 'bulk_passages' ? 'B' : type.slice(-1)}
+                      </span>
+                      
+                      {/* Label */}
+                      <span className="whitespace-nowrap">
+                        {type === 'bulk_passages' ? 'Bulk Passages' : `Passage ${type.slice(-1)}`}
+                      </span>
+
+                      {/* Completion Badge */}
+                      {passageExists && (
+                        <span className={`
+                          ml-1 text-xs
+                          ${isSelected ? 'text-green-300' : 'text-green-600'}
+                        `}>
+                          ✓
+                        </span>
+                      )}
                     </button>
                   );
                 })}
-              </>
-            )}
+              </div>
+            </div>
+          )}
 
-            {selectedSection === 'listening' && (
-              <>
+          {/* Listening Parts */}
+          {selectedSection === 'listening' && (
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Listening Part</h3>
+              <div className="flex flex-wrap gap-3">
                 {(['part_1', 'part_2', 'part_3', 'part_4'] as const).map((type) => {
                   const partExists = parts.some((p: any) => p.part_type === type);
+                  const isSelected = selectedSubType === type;
+                  
                   return (
                     <button
                       key={type}
                       onClick={() => setSelectedSubType(type)}
-                      className={`px-6 py-2 rounded-lg transition-all ${
-                        selectedSubType === type
-                          ? 'bg-[#042d62] text-white shadow-md'
-                          : partExists
-                          ? 'bg-green-100 text-green-800 hover:bg-green-200 border border-green-300'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
+                      className={`
+                        group relative px-5 py-3 rounded-xl text-sm font-medium 
+                        transition-all duration-200 ease-out
+                        flex items-center gap-3 border-2
+                        ${isSelected
+                          ? 'bg-[#042d62] text-white border-[#042d62] shadow-lg shadow-[#042d62]/20 scale-105'
+                          : 'bg-white text-slate-700 border-slate-300 hover:border-[#042d62] hover:shadow-md hover:scale-102'
+                        }
+                      `}
                     >
-                      {partExists && '✅ '}Part {type.slice(-1)}
+                      {/* Number Badge */}
+                      <span className={`
+                        w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+                        transition-all duration-200
+                        ${isSelected
+                          ? 'bg-white text-[#042d62]'
+                          : 'bg-slate-100 text-slate-600 group-hover:bg-[#042d62] group-hover:text-white'
+                        }
+                      `}>
+                        {type.slice(-1)}
+                      </span>
+                      
+                      {/* Label */}
+                      <span className="whitespace-nowrap">
+                        Part {type.slice(-1)}
+                      </span>
+
+                      {/* Completion Badge */}
+                      {partExists && (
+                        <span className={`
+                          ml-1 text-xs
+                          ${isSelected ? 'text-green-300' : 'text-green-600'}
+                        `}>
+                          ✓
+                        </span>
+                      )}
                     </button>
                   );
                 })}
-              </>
-            )}
+              </div>
+            </div>
+          )}
 
-            {selectedSection === 'writing' && (
-              <>
+          {/* Writing Tasks */}
+          {selectedSection === 'writing' && (
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Writing Task</h3>
+              <div className="flex flex-wrap gap-3">
                 {(['task1', 'task2'] as const).map((type) => {
                   const taskExists = writingTasks.some((t: any) => t.type === type);
+                  const isSelected = selectedSubType === type;
+                  
                   return (
                     <button
                       key={type}
                       onClick={() => setSelectedSubType(type)}
-                      className={`px-6 py-2 rounded-lg transition-all ${
-                        selectedSubType === type
-                          ? 'bg-[#042d62] text-white shadow-md'
-                          : taskExists
-                          ? 'bg-green-100 text-green-800 hover:bg-green-200 border border-green-300'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
+                      className={`
+                        group relative px-5 py-3 rounded-xl text-sm font-medium 
+                        transition-all duration-200 ease-out
+                        flex items-center gap-3 border-2
+                        ${isSelected
+                          ? 'bg-[#042d62] text-white border-[#042d62] shadow-lg shadow-[#042d62]/20 scale-105'
+                          : 'bg-white text-slate-700 border-slate-300 hover:border-[#042d62] hover:shadow-md hover:scale-102'
+                        }
+                      `}
                     >
-                      {taskExists && '✅ '}Task{type.slice(-1)}
+                      {/* Number Badge */}
+                      <span className={`
+                        w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+                        transition-all duration-200
+                        ${isSelected
+                          ? 'bg-white text-[#042d62]'
+                          : 'bg-slate-100 text-slate-600 group-hover:bg-[#042d62] group-hover:text-white'
+                        }
+                      `}>
+                        {type.slice(-1)}
+                      </span>
+                      
+                      {/* Label */}
+                      <span className="whitespace-nowrap">
+                        Task {type.slice(-1)}
+                      </span>
+
+                      {/* Completion Badge */}
+                      {taskExists && (
+                        <span className={`
+                          ml-1 text-xs
+                          ${isSelected ? 'text-green-300' : 'text-green-600'}
+                        `}>
+                          ✓
+                        </span>
+                      )}
                     </button>
                   );
                 })}
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
         </header>
 
         {/* Content Area */}

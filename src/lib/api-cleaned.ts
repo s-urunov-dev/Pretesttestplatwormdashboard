@@ -60,7 +60,7 @@ export interface IdentifyInfoData {
 export interface MatchingItemData {
   title: string;
   statement: string[];
-  option: string[];
+  option: Array<{ [key: string]: string }>; // CORRECT: Array of objects like [{ "A": "text", "B": "text" }]
   variant_type: VariantType;
   answer_count: number;
 }
@@ -96,7 +96,7 @@ export interface ListeningCompletionData {
 export interface ListeningMatchingStatementData {
   title: string;
   statement: string[];
-  option: string[];
+  option: Array<{ [key: string]: string }>; // CORRECT: Array of objects like [{ "A": "text", "B": "text" }]
   variant_type: VariantType;
   answer_count: number;
 }
