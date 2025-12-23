@@ -60,7 +60,7 @@ export interface IdentifyInfoData {
 export interface MatchingItemData {
   title: string;
   statement: string[];
-  option: Array<{ [key: string]: string }>; // CORRECT: Array of objects like [{ "A": "text", "B": "text" }]
+  option: string[][]; // ✅ FIXED: Array of arrays like [["text1", "text2"], ["text3", "text4"]]
   variant_type: VariantType;
   answer_count: number;
 }

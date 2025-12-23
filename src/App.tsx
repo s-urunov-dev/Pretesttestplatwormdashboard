@@ -6,6 +6,10 @@ import { AddQuestionPage } from './pages/AddQuestionPage';
 import { NewReadingQuestionPage } from './pages/NewReadingQuestionPage';
 import TableCompletionDemoPage from './pages/TableCompletionDemoPage';
 import { MatchingEditorDemo } from './pages/MatchingEditorDemo';
+import { DynamicFormDemo } from './pages/DynamicFormDemo';
+import { CompleteFormShowcase } from './pages/CompleteFormShowcase';
+import { MatchingGroupDemo } from './pages/MatchingGroupDemo';
+import { IndividualInputsDemo } from './pages/IndividualInputsDemo';
 
 export default function App() {
   return (
@@ -18,6 +22,10 @@ export default function App() {
           <Route path="/test/:testId/reading/:passageType" element={<NewReadingQuestionPage />} />
           <Route path="/demo/table-completion" element={<TableCompletionDemoPage />} />
           <Route path="/demo/matching-editor" element={<MatchingEditorDemo />} />
+          <Route path="/demo/dynamic-form" element={<DynamicFormDemo />} />
+          <Route path="/demo/complete-form" element={<CompleteFormShowcase />} />
+          <Route path="/demo/matching-group" element={<MatchingGroupDemo />} />
+          <Route path="/demo/individual-inputs" element={<IndividualInputsDemo />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

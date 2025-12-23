@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { BookOpen, Headphones, PenTool, ChevronLeft, Save, Loader2, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { BookOpen, Headphones, PenTool, ChevronLeft, Save, Loader2, Plus, Trash2, ChevronDown, ChevronUp, X } from 'lucide-react';
 import {
   getReadingQuestionTypes,
   getListeningQuestionTypes,
@@ -29,6 +29,12 @@ import { BulkReadingForm } from '../components/BulkReadingForm';
 import { WritingForm } from '../components/WritingForm';
 import { ListeningForm } from '../components/ListeningForm';
 import { SuccessAnimation } from '../components/SuccessAnimation';
+import { QuestionTypeSelector } from '../components/QuestionTypeSelector';
+import { MatchingItemInputs } from '../components/MatchingItemInputs';
+import { MatchingHeadingsInputs } from '../components/MatchingHeadingsInputs';
+import { MatchingInformationInputs } from '../components/MatchingInformationInputs';
+import { MatchingSentenceEndingsInputs } from '../components/MatchingSentenceEndingsInputs';
+import { MatchingFeaturesInputs } from '../components/MatchingFeaturesInputs';
 
 type SectionType = 'reading' | 'listening' | 'writing';
 type SubType = 'passage1' | 'passage2' | 'passage3' | 'part_1' | 'part_2' | 'part_3' | 'part_4' | 'task1' | 'task2' | 'bulk_passages';
@@ -72,6 +78,11 @@ export function AddQuestionPage() {
 
   // Accordion state for question groups
   const [expandedGroups, setExpandedGroups] = useState<number[]>([]);
+  
+  // Selected question types for Reading passage
+  const [selectedQuestionTypes, setSelectedQuestionTypes] = useState<string[]>([]);
+
+
 
   // Load test details and question types on mount
   useEffect(() => {
@@ -497,17 +508,18 @@ export function AddQuestionPage() {
     }
   };
 
-  const addQuestionGroup = (questionType: QuestionType) => {
+  const addQuestionGroup = () => {
+    // Check if a question type is selected
+    if (selectedQuestionTypes.length === 0) {
+      alert('Iltimos, avval savol turini tanlang!');
+      return;
+    }
+    
     const lastGroup = groups[groups.length - 1];
     const fromValue = lastGroup ? lastGroup.to_value + 1 : 1;
     
-    // Get last selected question type from the most recent group
-    const lastGroupType = groups.length > 0 
-      ? groups[groups.length - 1].question_type 
-      : '';
-    
     const newGroup: QuestionGroup = {
-      question_type: lastGroupType || '', // Auto-fill with last used type
+      question_type: selectedQuestionTypes[0], // Use selected question type from selector
       from_value: fromValue,
       to_value: fromValue,
     };
@@ -536,6 +548,8 @@ export function AddQuestionPage() {
     setGroups(groups.filter((_, i) => i !== index));
   };
 
+
+
   const handleSave = async () => {
     if (!readingId) {
       alert('Reading ID mavjud emas. Avval test yarating.');
@@ -552,8 +566,28 @@ export function AddQuestionPage() {
       return;
     }
 
+    // Validate matching_item groups have title
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      if (group.matching_item && (!group.matching_item.title || !group.matching_item.title.trim())) {
+        alert(`Guruh ${i + 1}: Matching savol uchun sarlavha to'ldirish majburiy!`);
+        return;
+      }
+      if (group.identify_info && (!group.identify_info.title || !group.identify_info.title.trim())) {
+        alert(`Guruh ${i + 1}: Identify Info savol uchun sarlavha to'ldirish majburiy!`);
+        return;
+      }
+      if (group.gap_filling && (!group.gap_filling.title || !group.gap_filling.title.trim())) {
+        alert(`Guruh ${i + 1}: Gap Filling savol uchun sarlavha to'ldirish majburiy!`);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
+      // 🔍 DEBUG: Log groups before cleaning
+      console.log('📦 BEFORE CLEANING - Raw groups:', JSON.stringify(groups, null, 2));
+      
       // Clean up groups before saving - remove empty lines from arrays
       const cleanedGroups = groups.map(group => {
         const cleanedGroup = { ...group };
@@ -562,17 +596,28 @@ export function AddQuestionPage() {
         if (cleanedGroup.identify_info?.question) {
           cleanedGroup.identify_info = {
             ...cleanedGroup.identify_info,
-            question: cleanedGroup.identify_info.question.filter(q => q.trim()),
+            question: cleanedGroup.identify_info.question.filter(q => typeof q === 'string' && q.trim()),
           };
         }
         
-        // Clean matching_item statements and options - remove empty strings
+        // Clean matching_item statements and options - FILTER EMPTY ARRAYS
         if (cleanedGroup.matching_item) {
+          console.log('🔍 DEBUG - Matching item BEFORE clean:', cleanedGroup.matching_item);
+          
+          const cleanedStatements = (cleanedGroup.matching_item.statement || []).filter(s => typeof s === 'string' && s.trim());
+          const cleanedOptions = (cleanedGroup.matching_item.option || [])
+            .map((arr: string[]) => (arr || []).filter((s: string) => typeof s === 'string' && s.trim()))
+            .filter((arr: string[]) => arr.length > 0);
+          
           cleanedGroup.matching_item = {
-            ...cleanedGroup.matching_item,
-            statement: (cleanedGroup.matching_item.statement || []).filter(s => s.trim()),
-            option: (cleanedGroup.matching_item.option || []).filter(o => o.trim()),
+            title: cleanedGroup.matching_item.title || '', // ✅ KEEP title
+            statement: cleanedStatements,
+            option: cleanedOptions,
+            variant_type: cleanedGroup.matching_item.variant_type || 'letter', // ✅ KEEP variant_type
+            answer_count: cleanedGroup.matching_item.answer_count || 1, // ✅ KEEP answer_count
           };
+          
+          console.log('🔍 DEBUG - Matching item AFTER clean:', cleanedGroup.matching_item);
         }
         
         // Convert table_completion to coordinate-based format (row:col)
@@ -716,7 +761,7 @@ export function AddQuestionPage() {
           console.error('❌ VALIDATION FAILED: to_value is 0 or invalid!', group);
           throw new Error('to_value must be greater than 0');
         }
-        if (!group.question_type || group.question_type.trim() === '') {
+        if (!group.question_type || (typeof group.question_type === 'string' && group.question_type.trim() === '')) {
           console.error('❌ VALIDATION FAILED: question_type is empty!', group);
           throw new Error('question_type is required');
         }
@@ -1226,54 +1271,24 @@ export function AddQuestionPage() {
                   </div>
 
                   {/* Question Type Selection */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg text-slate-900">Savol Turini Tanlang</h3>
+                  <QuestionTypeSelector 
+                    selectedTypes={selectedQuestionTypes}
+                    onTypesChange={setSelectedQuestionTypes}
+                  />
+                  
+                  {/* Add Question Group Button */}
+                  {selectedQuestionTypes.length > 0 && (
+                    <div className="flex justify-center">
                       <button
                         type="button"
-                        onClick={() => {
-                          const allExpanded = groups.map((_, i) => i);
-                          if (expandedGroups.length === groups.length) {
-                            setExpandedGroups([]);
-                          } else {
-                            setExpandedGroups(allExpanded);
-                          }
-                        }}
-                        className="text-sm text-[#042d62] hover:underline"
+                        onClick={addQuestionGroup}
+                        className="flex items-center gap-2 px-6 py-3 bg-[#042d62] text-white rounded-lg hover:bg-[#053a75] transition-all shadow-md hover:shadow-lg"
                       >
-                        {expandedGroups.length === groups.length ? 'Hammasini yopish' : 'Hammasini ochish'}
+                        <Plus className="w-5 h-5" />
+                        <span>Guruh Qo'shish</span>
                       </button>
                     </div>
-
-                    {groups.length > 0 && (
-                      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-sm text-blue-900">
-                          💡 <strong>Maslahat:</strong> Bir xil savol turini bir necha marta qo'shishingiz mumkin. Har bir guruh mustaqil.
-                        </p>
-                      </div>
-                    )}
-                    
-                    {loading ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-8 h-8 animate-spin text-[#042d62]" />
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {questionTypes.map((qType) => (
-                          <button
-                            key={qType.id}
-                            type="button"
-                            onClick={() => addQuestionGroup(qType)}
-                            className="group relative px-4 py-2 border border-slate-200 rounded-lg hover:border-[#042d62] hover:bg-[#042d62] hover:text-white transition-all text-sm"
-                            title={getQuestionTypeDescription(qType.type)}
-                          >
-                            <span className="text-slate-400 group-hover:text-white/70 transition-colors">{qType.id}.</span>{' '}
-                            <span className="text-slate-700 group-hover:text-white transition-colors">{getQuestionTypeLabel(qType.type)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  )}
 
                   {/* Added Question Groups */}
                   {groups.length > 0 && (
@@ -1342,36 +1357,6 @@ export function AddQuestionPage() {
                               {/* Group Content - Collapsible */}
                               {isExpanded && (
                                 <div className="p-4 bg-white space-y-4">
-                                  {/* Question Type Selector */}
-                                  <div>
-                                    <label className="block text-sm text-slate-700 mb-2">
-                                      Savol Turi <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                      value={group.question_type}
-                                      onChange={(e) => {
-                                        // Clear existing type-specific data when changing type
-                                        updateGroup(index, { 
-                                          question_type: e.target.value,
-                                          gap_filling: undefined,
-                                          identify_info: undefined,
-                                          matching_item: undefined,
-                                        });
-                                        // Save last selected question type to localStorage
-                                        localStorage.setItem('lastSelectedQuestionType_reading', e.target.value);
-                                      }}
-                                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
-                                      required
-                                    >
-                                      <option value="">Tanlang...</option>
-                                      {questionTypes.map((qType) => (
-                                        <option key={qType.id} value={qType.type}>
-                                          {getQuestionTypeLabel(qType.type)}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
                                   {/* From/To Values */}
                                   <div className="grid grid-cols-2 gap-4">
                                     <div>
@@ -1506,7 +1491,9 @@ export function AddQuestionPage() {
                                   {isMatchingItem && (
                                     <div className="space-y-4 pt-4 border-t border-slate-300">
                                       <div>
-                                        <label className="block text-sm text-slate-700 mb-2">Savol Sarlavhasi</label>
+                                        <label className="block text-sm text-slate-700 mb-2">
+                                          Savol Sarlavhasi <span className="text-red-500">*</span>
+                                        </label>
                                         <input
                                           type="text"
                                           value={group.matching_item?.title || ''}
@@ -1515,57 +1502,106 @@ export function AddQuestionPage() {
                                               ...group.matching_item,
                                               title: e.target.value,
                                               statement: group.matching_item?.statement || [''],
-                                              option: group.matching_item?.option || [''],
+                                              option: group.matching_item?.option || [],
                                               variant_type: group.matching_item?.variant_type || 'letter',
                                               answer_count: group.matching_item?.answer_count || 1,
                                             }
                                           })}
-                                          placeholder="Masalan: Match each heading with..."
+                                          placeholder={
+                                            questionTypeName === 'matching_headings' 
+                                              ? "Match the following paragraphs with the appropriate headings" 
+                                              : questionTypeName === 'matching_information'
+                                              ? "Which paragraph contains the following information?"
+                                              : questionTypeName === 'matching_sentence_endings'
+                                              ? "Complete each sentence with the correct ending"
+                                              : questionTypeName === 'matching_features'
+                                              ? "Match each statement with the correct person"
+                                              : "Masalan: Match each statement with..."
+                                          }
                                           className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                          required
                                         />
                                       </div>
 
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                          <label className="block text-sm text-slate-700 mb-2">Savollar (har qatorda bittadan)</label>
-                                          <textarea
-                                            value={(group.matching_item?.statement || ['']).join('\n')}
-                                            onChange={(e) => updateGroup(index, {
-                                              matching_item: {
-                                                ...group.matching_item,
-                                                title: group.matching_item?.title || '',
-                                                statement: e.target.value.split('\n').filter(s => s.trim()),
-                                                option: group.matching_item?.option || [''],
-                                                variant_type: group.matching_item?.variant_type || 'letter',
-                                                answer_count: group.matching_item?.answer_count || 1,
-                                              }
-                                            })}
-                                            placeholder="1. First statement\n2. Second statement"
-                                            rows={5}
-                                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
-                                          />
-                                        </div>
+                                      {/* CHECK QUESTION TYPE - Use specific component */}
+                                      {questionTypeName === 'matching_headings' ? (
+                                        <MatchingHeadingsInputs
+                                          value={group.matching_item}
+                                          variantType={group.matching_item?.variant_type || 'letter'}
+                                          onChange={(data) => updateGroup(index, {
+                                            matching_item: {
+                                              ...group.matching_item,
+                                              title: group.matching_item?.title || '',
+                                              statement: data.statement,
+                                              option: data.option,
+                                              variant_type: group.matching_item?.variant_type || 'letter',
+                                              answer_count: group.matching_item?.answer_count || 1,
+                                            }
+                                          })}
+                                        />
+                                      ) : questionTypeName === 'matching_information' ? (
+                                        <MatchingInformationInputs
+                                          value={group.matching_item}
+                                          variantType={group.matching_item?.variant_type || 'letter'}
+                                          onChange={(data) => updateGroup(index, {
+                                            matching_item: {
+                                              ...group.matching_item,
+                                              title: group.matching_item?.title || '',
+                                              statement: data.statement,
+                                              option: data.option,
+                                              variant_type: group.matching_item?.variant_type || 'letter',
+                                              answer_count: group.matching_item?.answer_count || 1,
+                                            }
+                                          })}
+                                        />
+                                      ) : questionTypeName === 'matching_sentence_endings' ? (
+                                        <MatchingSentenceEndingsInputs
+                                          value={group.matching_item}
+                                          variantType={group.matching_item?.variant_type || 'letter'}
+                                          onChange={(data) => updateGroup(index, {
+                                            matching_item: {
+                                              ...group.matching_item,
+                                              title: group.matching_item?.title || '',
+                                              statement: data.statement,
+                                              option: data.option,
+                                              variant_type: group.matching_item?.variant_type || 'letter',
+                                              answer_count: group.matching_item?.answer_count || 1,
+                                            }
+                                          })}
+                                        />
+                                      ) : questionTypeName === 'matching_features' ? (
+                                        <MatchingFeaturesInputs
+                                          value={group.matching_item}
+                                          variantType={group.matching_item?.variant_type || 'letter'}
+                                          onChange={(data) => updateGroup(index, {
+                                            matching_item: {
+                                              ...group.matching_item,
+                                              title: group.matching_item?.title || '',
+                                              statement: data.statement,
+                                              option: data.option,
+                                              variant_type: group.matching_item?.variant_type || 'letter',
+                                              answer_count: group.matching_item?.answer_count || 1,
+                                            }
+                                          })}
+                                        />
+                                      ) : (
+                                        <MatchingItemInputs
+                                          value={group.matching_item}
+                                          variantType={group.matching_item?.variant_type || 'letter'}
+                                          onChange={(data) => updateGroup(index, {
+                                            matching_item: {
+                                              ...group.matching_item,
+                                              title: group.matching_item?.title || '',
+                                              statement: data.statement,
+                                              option: data.option,
+                                              variant_type: group.matching_item?.variant_type || 'letter',
+                                              answer_count: group.matching_item?.answer_count || 1,
+                                            }
+                                          })}
+                                        />
+                                      )}
 
-                                        <div>
-                                          <label className="block text-sm text-slate-700 mb-2">Variantlar (har qatorda bittadan)</label>
-                                          <textarea
-                                            value={(group.matching_item?.option || ['']).join('\n')}
-                                            onChange={(e) => updateGroup(index, {
-                                              matching_item: {
-                                                ...group.matching_item,
-                                                title: group.matching_item?.title || '',
-                                                statement: group.matching_item?.statement || [''],
-                                                option: e.target.value.split('\n').filter(o => o.trim()),
-                                                variant_type: group.matching_item?.variant_type || 'letter',
-                                                answer_count: group.matching_item?.answer_count || 1,
-                                              }
-                                            })}
-                                            placeholder="A. First option\nB. Second option"
-                                            rows={5}
-                                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
-                                          />
-                                        </div>
-                                      </div>
+
 
                                       <div className="grid grid-cols-2 gap-4">
                                         <div>
