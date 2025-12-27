@@ -11,6 +11,7 @@ import {
 } from '../components/ReadingQuestionEditors';
 import { AdminMatchingEditor, MatchingQuestionData } from '../components/AdminMatchingEditor';
 import { TableCompletionEditorIndexed } from '../components/TableCompletionEditorIndexed';
+import { FlowChartCompletionEditor } from '../components/FlowChartCompletionEditor';
 import { RichTextEditor } from '../components/RichTextEditor';
 
 interface QuestionGroup {
@@ -153,7 +154,6 @@ export function NewReadingQuestionPage() {
       
       case 'sentence_completion':
       case 'summary_completion':
-      case 'flow_chart_completion':
         return (
           <CompletionEditor
             questionType={type}
@@ -162,11 +162,21 @@ export function NewReadingQuestionPage() {
           />
         );
       
+      case 'flowchart_completion':
+        return (
+          <FlowChartCompletionEditor
+            data={group.data || {}}
+            onChange={(data) => updateQuestionGroup(group.id, { data })}
+            initialData={group.data}
+          />
+        );
+      
       case 'table_completion':
         return (
           <TableCompletionEditorIndexed
-            initialData={group.data}
+            data={group.data || {}}
             onChange={(data) => updateQuestionGroup(group.id, { data })}
+            initialData={group.data}
           />
         );
       

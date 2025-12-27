@@ -15,6 +15,7 @@ import { SuccessAnimation } from './SuccessAnimation';
 import { RichTextEditor } from './RichTextEditor';
 import { MatchingItemEditor } from './MatchingItemEditor';
 import { AdminMatchingEditor, MatchingQuestionData } from './AdminMatchingEditor';
+import { ReadingMultipleChoiceEditor, ReadingMultipleChoiceData } from './ReadingMultipleChoiceEditor';
 
 interface ReadingQuestionFormProps {
   testId?: number;
@@ -87,7 +88,7 @@ export function ReadingQuestionForm({
   console.log('Number of criteria:', Object.keys(GAP_FILLING_CRITERIA).length);
 
   // Helper function to determine question type category based on API type
-  const getQuestionTypeCategory = (questionType: string): 'identify_info' | 'gap_filling' | 'matching_item' | null => {
+  const getQuestionTypeCategory = (questionType: string): 'identify_info' | 'gap_filling' | 'matching_item' | 'multiple_choice' | null => {
     if (!questionType) return null;
 
     const type = questionType.toLowerCase();
@@ -112,6 +113,11 @@ export function ReadingQuestionForm({
     // Matching types (Matching Headings, Features, Information, Sentence Endings)
     if (type.includes('matching') || type.includes('match')) {
       return 'matching_item';
+    }
+
+    // Multiple Choice types
+    if (type.includes('multiple_choice')) {
+      return 'multiple_choice';
     }
 
     // Default to gap_filling for unknown types
@@ -186,6 +192,44 @@ export function ReadingQuestionForm({
     setIsSubmitting(true);
 
     try {
+      // Convert multiple_choice_data to matching_item format before sending to backend
+      const convertedGroups = questionGroups.map(group => {
+        const convertedGroup = { ...group };
+        
+        // Convert multiple_choice_data to matching_item (backend expects matching_item format)
+        if (group.multiple_choice_data) {
+          const mcData = group.multiple_choice_data;
+          
+          // Convert questions array to statement array (question texts)
+          const statements = mcData.questions.map((q: any) => q.question);
+          
+          // Convert options from array of {key, text} to array of arrays
+          // Backend expects: [["text1", "text2", "text3"], ...]
+          const optionsFormatted = mcData.questions.map((q: any) => {
+            return q.options.map((opt: any) => opt.text);
+          });
+          
+          convertedGroup.matching_item = {
+            title: mcData.title || '',
+            statement: statements,
+            option: optionsFormatted,
+            variant_type: mcData.variant_type,
+            answer_count: mcData.answer_count,
+          };
+          
+          // Remove multiple_choice_data as backend doesn't expect it
+          delete convertedGroup.multiple_choice_data;
+          
+          console.log('🔄 Converted multiple_choice_data to matching_item for Reading:', {
+            questions_count: statements.length,
+            variant_type: mcData.variant_type,
+            answer_count: mcData.answer_count,
+          });
+        }
+        
+        return convertedGroup;
+      });
+
       if (initialPassageId) {
         // UPDATE mode: patch existing passage
         console.log('📝 UPDATE mode - Patching existing passage:', initialPassageId);
@@ -193,7 +237,7 @@ export function ReadingQuestionForm({
         const updatePayload = {
           title: title,
           body: passageText,
-          groups: questionGroups,
+          groups: convertedGroups,
         };
         
         console.log('📤 Updating reading passage:', JSON.stringify(updatePayload, null, 2));
@@ -221,7 +265,7 @@ export function ReadingQuestionForm({
           passage_type: passageType,
           title: title,
           body: passageText,
-          groups: questionGroups,
+          groups: convertedGroups,
         };
 
         console.log('📤 Sending reading passage data:', JSON.stringify(payload, null, 2));
@@ -310,6 +354,7 @@ export function ReadingQuestionForm({
             const isIdentifyInfo = formCategory === 'identify_info';
             const isGapFilling = formCategory === 'gap_filling';
             const isMatchingItem = formCategory === 'matching_item';
+            const isMultipleChoice = formCategory === 'multiple_choice';
 
             return (
               <div
@@ -602,6 +647,20 @@ export function ReadingQuestionForm({
                               }
                             });
                           }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Multiple Choice Fields */}
+                    {isMultipleChoice && (
+                      <div className="space-y-4 border-t pt-4">
+                        <ReadingMultipleChoiceEditor
+                          data={group.multiple_choice_data as ReadingMultipleChoiceData}
+                          onChange={(data) => {
+                            updateQuestionGroup(index, { multiple_choice_data: data });
+                          }}
+                          questionNumberStart={group.from_value || 1}
+                          questionNumberEnd={group.to_value || 1}
                         />
                       </div>
                     )}

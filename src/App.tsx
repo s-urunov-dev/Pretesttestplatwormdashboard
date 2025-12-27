@@ -10,6 +10,7 @@ import { DynamicFormDemo } from './pages/DynamicFormDemo';
 import { CompleteFormShowcase } from './pages/CompleteFormShowcase';
 import { MatchingGroupDemo } from './pages/MatchingGroupDemo';
 import { IndividualInputsDemo } from './pages/IndividualInputsDemo';
+import { FormCompletionDemo } from './pages/FormCompletionDemo';
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/demo/complete-form" element={<CompleteFormShowcase />} />
           <Route path="/demo/matching-group" element={<MatchingGroupDemo />} />
           <Route path="/demo/individual-inputs" element={<IndividualInputsDemo />} />
+          <Route path="/demo/form-completion" element={<FormCompletionDemo />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

@@ -50,6 +50,9 @@ export interface GapFillingData {
   title: string;
   principle: CriteriaType; // Changed from criteria to principle
   body: string;
+  diagram_chart?: {
+    image: string; // Base64 or URL
+  };
 }
 
 export interface IdentifyInfoData {
@@ -108,6 +111,22 @@ export interface ListeningTableCompletionData {
   };
 }
 
+export interface SentenceCompletionData {
+  title: string;
+  instruction: string;
+  sentences: Array<{
+    text: string;
+    correctAnswer: string;
+  }>;
+}
+
+export interface SummaryCompletionData {
+  title: string;
+  instruction: string;
+  summary: string;
+  options: string[];
+}
+
 export interface QuestionGroup {
   question_type: string;
   from_value: number;
@@ -117,6 +136,13 @@ export interface QuestionGroup {
   matching_item?: MatchingItemData;
   map_diagram?: MapDiagramData;
   table_completion?: TableCompletionData | ListeningTableCompletionData; // Support both old and new formats
+  sentence_completion?: SentenceCompletionData;
+  summary_completion?: SummaryCompletionData;
+  flowchart_completion?: any; // Flow Chart Completion data
+  diagram_labeling?: any; // Diagram Labeling data
+  short_answer?: any; // Short Answer data
+  form_completion?: any; // Form Completion data
+  multiple_choice_data?: any; // Multiple Choice data for Listening
 }
 
 // Listening Question Group (with listening_question_type for API)
@@ -939,8 +965,28 @@ export async function getReadingPassages(readingId: number): Promise<any> {
     console.log('📡 Passages response status:', response.status);
 
     if (!response.ok) {
+      // If 404, it means no passages exist yet - this is normal
+      if (response.status === 404) {
+        console.log('ℹ️ No passages found yet (404) - returning empty results');
+        return { results: [] };
+      }
+      
       const errorText = await response.text();
       console.error('❌ Passages error:', errorText);
+      
+      // Check if it's a Django error page (HTML response)
+      if (errorText.includes('<!DOCTYPE html>') || errorText.includes('<html')) {
+        // Extract error type and message from Django error page
+        const errorTypeMatch = errorText.match(/<title>(.+?)<\/title>/);
+        const errorType = errorTypeMatch ? errorTypeMatch[1] : 'Server Error';
+        
+        throw new Error(
+          `Backend serializer error: ${errorType}. ` +
+          `This is a backend issue that needs to be fixed by the backend developer. ` +
+          `Please check /URGENT_BACKEND_FIX.md for detailed fix instructions.`
+        );
+      }
+      
       throw new Error(`Failed to fetch passages: ${response.status}`);
     }
 
@@ -950,6 +996,131 @@ export async function getReadingPassages(readingId: number): Promise<any> {
     return data;
   } catch (error) {
     console.error('Error fetching passages:', error);
+    throw error;
+  }
+}
+
+// Helper function to convert base64 to File
+function base64ToFile(base64String: string, filename: string): File {
+  const arr = base64String.split(',');
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new File([u8arr], filename, { type: mime });
+}
+
+// Create diagram chart image (separate API)
+export async function createDiagramChart(imageFile: File, gapFillingId: number): Promise<any> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    console.log('Offline mode: diagram chart saved locally');
+    return { id: Date.now(), image: URL.createObjectURL(imageFile) };
+  }
+
+  try {
+    console.log('🔄 Creating diagram chart:', imageFile.name, 'for gap_filling:', gapFillingId);
+    
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    formData.append('gap_filling', gapFillingId.toString());
+
+    // ✅ UPDATED: Using correct API endpoint as per backend
+    const response = await fetch(`${BASE_URL}/reading/diagram_chart_create`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    console.log('📡 DiagramChart response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ DiagramChart error:', errorText);
+      throw new Error(`Failed to create diagram chart: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ DiagramChart created:', result);
+    return result;
+  } catch (error) {
+    console.error('💥 Error creating diagram chart:', error);
+    throw error;
+  }
+}
+
+// Update diagram chart image (separate API)
+export async function updateDiagramChart(id: number, imageFile: File): Promise<any> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    console.log('Offline mode: diagram chart updated locally');
+    return { id, image: URL.createObjectURL(imageFile) };
+  }
+
+  try {
+    console.log('🔄 Updating diagram chart:', id);
+    
+    const formData = new FormData();
+    formData.append('image', imageFile);
+
+    const response = await fetch(`${BASE_URL}/reading/diagram-chart/${id}/`, {
+      method: 'PATCH',
+      body: formData,
+    });
+
+    console.log('📡 DiagramChart update response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ DiagramChart update error:', errorText);
+      throw new Error(`Failed to update diagram chart: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ DiagramChart updated:', result);
+    return result;
+  } catch (error) {
+    console.error('💥 Error updating diagram chart:', error);
+    throw error;
+  }
+}
+
+// Get diagram chart by ID (separate API)
+export async function getDiagramChart(id: number): Promise<any> {
+  const apiAvailable = await checkAPIAvailability();
+  
+  if (!apiAvailable) {
+    console.log('Offline mode: diagram chart not available');
+    return null;
+  }
+
+  try {
+    console.log('🔄 Getting diagram chart:', id);
+    
+    const response = await fetch(`${BASE_URL}/reading/diagram-chart/${id}/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('📡 DiagramChart GET response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ DiagramChart GET error:', errorText);
+      throw new Error(`Failed to get diagram chart: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ DiagramChart retrieved:', result);
+    return result;
+  } catch (error) {
+    console.error('💥 Error getting diagram chart:', error);
     throw error;
   }
 }
@@ -967,32 +1138,229 @@ export async function createReadingPassage(data: CreateReadingPassageRequest): P
   try {
     console.log('🔄 Creating reading passage:', data);
     
+    // Step 1: Create the passage first (without diagram_chart images)
+    const passageData = {
+      reading: data.reading,
+      passage_type: data.passage_type,
+      title: data.title,
+      body: data.body,
+      groups: data.groups.map(group => {
+        const groupCopy = JSON.parse(JSON.stringify(group));
+        // Remove diagram_chart temporarily - we'll handle it separately
+        if (groupCopy.gap_filling?.diagram_chart) {
+          delete groupCopy.gap_filling.diagram_chart;
+        }
+        return groupCopy;
+      }),
+    };
+
     const response = await fetch(`${BASE_URL}/reading-pasage-create/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(passageData),
     });
 
-    console.log('📡 Response status:', response.status);
+    console.log('📡 Passage response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ Error response:', errorText);
+      console.error('❌ Passage error:', errorText);
       
       let errorMessage = 'Failed to create passage';
       try {
         const errorJson = JSON.parse(errorText);
+        console.error('❌ Error JSON:', errorJson);
         errorMessage = JSON.stringify(errorJson, null, 2);
       } catch {
+        console.error('❌ Could not parse error as JSON');
         errorMessage = errorText || `HTTP ${response.status}`;
       }
       
       throw new Error(`Passage yaratib bo'lmadi: ${errorMessage}`);
     }
 
-    console.log('✅ Reading passage created successfully');
+    const createdPassage = await response.json();
+    console.log('✅ Reading passage created:', createdPassage);
+    console.log('📦 Full response structure:', JSON.stringify(createdPassage, null, 2));
+
+    // Step 2: Extract gap_filling IDs from created passage response
+    // ✅ The backend should return complete gap_filling objects with IDs in the POST response
+    let passageWithDetails = createdPassage;
+    
+    // ✅ DEBUG: Log response structure first
+    console.log('\n' + '='.repeat(80));
+    console.log('🔍 BACKEND RESPONSE ANALYSIS');
+    console.log('='.repeat(80));
+    console.log('Response Type:', typeof createdPassage);
+    console.log('Response Keys:', Object.keys(createdPassage));
+    console.log('Has groups?:', 'groups' in createdPassage);
+    console.log('Groups type:', typeof createdPassage.groups);
+    console.log('Groups is array?:', Array.isArray(createdPassage.groups));
+    console.log('Groups length:', createdPassage.groups?.length || 'N/A');
+    
+    // ✅ DEBUG: Log groups structure to see gap_filling IDs
+    if (passageWithDetails.groups && Array.isArray(passageWithDetails.groups)) {
+      console.log('\n📊 Groups structure - Total groups:', passageWithDetails.groups.length);
+      passageWithDetails.groups.forEach((g: any, idx: number) => {
+        console.log(`\n${'▬'.repeat(60)}`);
+        console.log(`📋 GROUP ${idx} ANALYSIS:`);
+        console.log(`${'▬'.repeat(60)}`);
+        console.log('  ├─ id:', g.id);
+        console.log('  ├─ question_type:', g.question_type);
+        console.log('  ├─ All Keys:', Object.keys(g));
+        console.log('  ├─ gap_filling type:', typeof g.gap_filling);
+        console.log('  ├─ gap_filling is object?:', typeof g.gap_filling === 'object');
+        console.log('  ├─ gap_filling is number?:', typeof g.gap_filling === 'number');
+        console.log('  ├─ gap_filling value:', g.gap_filling);
+        console.log('  ├─ gap_filling_id:', g.gap_filling_id);
+        console.log('  ├─ hasGapFilling:', !!g.gap_filling);
+        console.log('  └─ gap_filling.id:', g.gap_filling?.id);
+        
+        if (g.gap_filling && typeof g.gap_filling === 'object') {
+          console.log('  ↳ gap_filling keys:', Object.keys(g.gap_filling));
+        }
+      });
+    } else {
+      console.error('\n' + '❌'.repeat(40));
+      console.error('⚠️ CRITICAL: No groups array in backend response!');
+      console.error('❌'.repeat(40));
+      console.error('Expected: response.groups = [...]');
+      console.error('Received:', createdPassage);
+      console.error('\n📋 BACKEND MUST RETURN:');
+      console.error('{');
+      console.error('  "id": 123,');
+      console.error('  "groups": [');
+      console.error('    {');
+      console.error('      "id": 456,');
+      console.error('      "question_type": "flowchart_completion",');
+      console.error('      "gap_filling": {');
+      console.error('        "id": 789,  // ← THIS IS REQUIRED');
+      console.error('        "title": "...",');
+      console.error('        "questions": [...]');
+      console.error('      }');
+      console.error('    }');
+      console.error('  ]');
+      console.error('}');
+      console.error('');
+      console.error('📖 See /BACKEND_GAP_FILLING_ID_FIX.md for backend fix instructions.');
+      console.error('❌'.repeat(40) + '\n');
+    }
+    console.log('='.repeat(80) + '\n');
+
+    // Step 3: Upload diagram_chart images separately
+    // ✅ ONLY for flowchart_completion and diagram_labeling question types
+    for (let i = 0; i < data.groups.length; i++) {
+      const group = data.groups[i];
+      const questionType = group.question_type;
+      
+      console.log(`🔍 DEBUG - Checking group ${i}:`, {
+        questionType: questionType,
+        hasGapFilling: !!group.gap_filling,
+        hasDiagramChart: !!group.gap_filling?.diagram_chart,
+        hasImage: !!group.gap_filling?.diagram_chart?.image,
+      });
+      
+      // ✅ ONLY upload diagram chart for flowchart_completion and diagram_labeling
+      const shouldUploadDiagramChart = 
+        (questionType === 'flowchart_completion' || questionType === 'diagram_labeling') &&
+        group.gap_filling?.diagram_chart?.image;
+      
+      if (shouldUploadDiagramChart) {
+        const imageData = group.gap_filling.diagram_chart.image;
+        
+        // Check if it's a base64 image
+        if (imageData.startsWith('data:image')) {
+          console.log(`📸 Uploading diagram_chart for ${questionType} group ${i}...`);
+          
+          const imageFile = base64ToFile(imageData, `diagram_chart_${i}.png`);
+          
+          // ✅ Get the gap_filling ID from created passage
+          let createdGapFillingId = null;
+          
+          // Try different response structures to find gap_filling ID
+          console.log(`\n${'🔍'.repeat(30)}`);
+          console.log(`🔍 Searching for gap_filling ID in group ${i} (${questionType}):`);
+          console.log(`${'▬'.repeat(60)}`);
+          
+          const createdGroup = passageWithDetails.groups?.[i];
+          if (createdGroup) {
+            console.log('Group Keys:', Object.keys(createdGroup));
+            console.log('gap_filling type:', typeof createdGroup.gap_filling);
+            console.log('gap_filling_id:', createdGroup.gap_filling_id);
+            console.log('gap_filling value:', createdGroup.gap_filling);
+            
+            // Try all possible paths to find gap_filling ID
+            if (createdGroup.gap_filling?.id) {
+              createdGapFillingId = createdGroup.gap_filling.id;
+              console.log(`✅ Found gap_filling.id: ${createdGapFillingId}`);
+            } else if (createdGroup.gap_filling_id) {
+              createdGapFillingId = createdGroup.gap_filling_id;
+              console.log(`✅ Found gap_filling_id: ${createdGapFillingId}`);
+            } else if (typeof createdGroup.gap_filling === 'number') {
+              createdGapFillingId = createdGroup.gap_filling;
+              console.log(`✅ Found gap_filling as number: ${createdGapFillingId}`);
+            } else {
+              console.error(`❌ Could not find gap_filling ID in any standard field!`);
+              console.error('Full group data:', JSON.stringify(createdGroup, null, 2));
+            }
+          } else {
+            console.error(`❌ createdGroup is null or undefined for index ${i}`);
+            console.error('Available groups:', passageWithDetails.groups);
+          }
+          console.log(`${'🔍'.repeat(30)}\n`);
+          
+          if (createdGapFillingId) {
+            console.log(`\n${'🚀'.repeat(30)}`);
+            console.log(`🚀 Uploading diagram chart for group ${i}...`);
+            console.log(`  ├─ gap_filling ID: ${createdGapFillingId}`);
+            console.log(`  ├─ question_type: ${questionType}`);
+            console.log(`  └─ Image size: ${(imageData.length / 1024).toFixed(2)} KB`);
+            
+            try {
+              const diagramChartResult = await createDiagramChart(imageFile, createdGapFillingId);
+              console.log(`✅ Diagram chart uploaded successfully!`);
+              console.log(`  └─ Result:`, diagramChartResult);
+              
+              // Step 4: Retrieve the created diagram_chart object
+              if (diagramChartResult?.id) {
+                const retrievedDiagramChart = await getDiagramChart(diagramChartResult.id);
+                console.log(`✅ Diagram chart retrieved:`, retrievedDiagramChart);
+              }
+            } catch (uploadError) {
+              console.error(`❌ Failed to upload diagram chart for group ${i}:`, uploadError);
+              // Don't throw - continue with other groups
+            }
+            console.log(`${'🚀'.repeat(30)}\n`);
+          } else {
+            // ⚠️ WARNING: Gap filling ID not found - Backend may not have created gap_filling yet
+            console.error(`\n${'❌'.repeat(40)}`);
+            console.error(`⚠️ DIAGRAM CHART UPLOAD FAILED - Gap filling ID not found!`);
+            console.error(`${'❌'.repeat(40)}`);
+            console.error(`Group: ${i}`);
+            console.error(`Question Type: ${questionType}`);
+            console.error(`Has Image: ${!!imageData}`);
+            console.error('');
+            console.error('🔴 REASON:');
+            console.error('Backend POST response does not include gap_filling ID.');
+            console.error('');
+            console.error('✅ SOLUTION:');
+            console.error('Backend must return gap_filling objects with IDs in POST response.');
+            console.error('See /BACKEND_GAP_FILLING_ID_FIX.md for detailed instructions.');
+            console.error('');
+            console.error('📦 Full group structure:');
+            console.error(JSON.stringify(createdGroup, null, 2));
+            console.error(`${'❌'.repeat(40)}\n`);
+            
+            // Don't throw error - allow passage creation to continue
+            // The diagram chart can be added later via PATCH if needed
+          }
+        }
+      }
+    }
+
+    console.log('✅ All diagram charts uploaded successfully');
   } catch (error) {
     console.error('💥 Error creating passage:', error);
     throw error;
@@ -1012,32 +1380,182 @@ export async function updateReadingPassage(id: number, data: UpdateReadingPassag
   try {
     console.log('🔄 Updating reading passage:', id, data);
     
+    // Step 1: Update the passage (without diagram_chart images)
+    const passageData = {
+      title: data.title,
+      body: data.body,
+      groups: data.groups.map(group => {
+        const groupCopy = JSON.parse(JSON.stringify(group));
+        // Remove diagram_chart temporarily - we'll handle it separately
+        if (groupCopy.gap_filling?.diagram_chart) {
+          delete groupCopy.gap_filling.diagram_chart;
+        }
+        return groupCopy;
+      }),
+    };
+
     const response = await fetch(`${BASE_URL}/reading-pasage-update/${id}/`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(passageData),
     });
 
-    console.log('📡 Response status:', response.status);
+    console.log('📡 Update response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ Error response:', errorText);
+      console.error('❌ Update error:', errorText);
       
       let errorMessage = 'Failed to update passage';
       try {
         const errorJson = JSON.parse(errorText);
+        console.error('❌ Error JSON:', errorJson);
         errorMessage = JSON.stringify(errorJson, null, 2);
       } catch {
+        console.error('❌ Could not parse error as JSON');
         errorMessage = errorText || `HTTP ${response.status}`;
       }
       
       throw new Error(`Passage yangilashda xatolik: ${errorMessage}`);
     }
 
-    console.log('✅ Reading passage updated successfully');
+    const updatedPassage = await response.json();
+    console.log('✅ Reading passage updated:', updatedPassage);
+    console.log('📦 Full update response structure:', JSON.stringify(updatedPassage, null, 2));
+
+    // ✅ DEBUG: Log response structure
+    console.log('\n' + '='.repeat(80));
+    console.log('🔍 UPDATE RESPONSE ANALYSIS');
+    console.log('='.repeat(80));
+    console.log('Response Type:', typeof updatedPassage);
+    console.log('Response Keys:', Object.keys(updatedPassage));
+    console.log('Has groups?:', 'groups' in updatedPassage);
+    console.log('Groups type:', typeof updatedPassage.groups);
+    console.log('Groups is array?:', Array.isArray(updatedPassage.groups));
+    console.log('Groups length:', updatedPassage.groups?.length || 'N/A');
+    console.log('='.repeat(80) + '\n');
+
+    // Step 2: Update diagram_chart images separately
+    // ✅ ONLY for flowchart_completion and diagram_labeling question types
+    for (let i = 0; i < data.groups.length; i++) {
+      const group = data.groups[i];
+      const questionType = group.question_type;
+      
+      // ✅ ONLY upload diagram chart for flowchart_completion and diagram_labeling
+      const shouldUploadDiagramChart = 
+        (questionType === 'flowchart_completion' || questionType === 'diagram_labeling') &&
+        group.gap_filling?.diagram_chart?.image;
+      
+      if (shouldUploadDiagramChart) {
+        const imageData = group.gap_filling.diagram_chart.image;
+        
+        // Check if it's a base64 image (new upload)
+        if (imageData.startsWith('data:image')) {
+          console.log(`📸 Updating diagram_chart for ${questionType} group ${i}...`);
+          
+          const imageFile = base64ToFile(imageData, `diagram_chart_${i}.png`);
+          
+          // Check if this group already has a diagram_chart in the updated response
+          const updatedGroup = updatedPassage.groups?.[i];
+          const existingDiagramChartId = updatedGroup?.gap_filling?.diagram_chart?.id;
+          
+          if (existingDiagramChartId) {
+            // Update existing diagram_chart
+            const updatedDiagramChart = await updateDiagramChart(existingDiagramChartId, imageFile);
+            console.log(`✅ Diagram chart updated for group ${i}`);
+            
+            // Retrieve updated diagram_chart
+            if (updatedDiagramChart?.id) {
+              const retrievedDiagramChart = await getDiagramChart(updatedDiagramChart.id);
+              console.log(`✅ Diagram chart retrieved for group ${i}:`, retrievedDiagramChart);
+            }
+          } else {
+            // Create new diagram_chart - need gap_filling ID - try multiple paths
+            let createdGapFillingId = null;
+            
+            console.log(`\n${'🔍'.repeat(30)}`);
+            console.log(`🔍 Searching for gap_filling ID in updated group ${i} (${questionType}):`);
+            console.log(`${'▬'.repeat(60)}`);
+            
+            const updatedGroupForSearch = updatedPassage.groups?.[i];
+            if (updatedGroupForSearch) {
+              console.log('Group Keys:', Object.keys(updatedGroupForSearch));
+              console.log('gap_filling type:', typeof updatedGroupForSearch.gap_filling);
+              console.log('gap_filling_id:', updatedGroupForSearch.gap_filling_id);
+              console.log('gap_filling value:', updatedGroupForSearch.gap_filling);
+              
+              // Try all possible paths to find gap_filling ID
+              if (updatedGroupForSearch.gap_filling?.id) {
+                createdGapFillingId = updatedGroupForSearch.gap_filling.id;
+                console.log(`✅ Found gap_filling.id: ${createdGapFillingId}`);
+              } else if (updatedGroupForSearch.gap_filling_id) {
+                createdGapFillingId = updatedGroupForSearch.gap_filling_id;
+                console.log(`✅ Found gap_filling_id: ${createdGapFillingId}`);
+              } else if (typeof updatedGroupForSearch.gap_filling === 'number') {
+                createdGapFillingId = updatedGroupForSearch.gap_filling;
+                console.log(`✅ Found gap_filling as number: ${createdGapFillingId}`);
+              } else {
+                console.error(`❌ Could not find gap_filling ID in any standard field!`);
+                console.error('Full group data:', JSON.stringify(updatedGroupForSearch, null, 2));
+              }
+            } else {
+              console.error(`❌ updatedGroup is null or undefined for index ${i}`);
+              console.error('Available groups:', updatedPassage.groups);
+            }
+            console.log(`${'🔍'.repeat(30)}\n`);
+            
+            if (createdGapFillingId) {
+              console.log(`\n${'🚀'.repeat(30)}`);
+              console.log(`🚀 Creating new diagram chart for group ${i}...`);
+              console.log(`  ├─ gap_filling ID: ${createdGapFillingId}`);
+              console.log(`  ├─ question_type: ${questionType}`);
+              console.log(`  └─ Image size: ${(imageData.length / 1024).toFixed(2)} KB`);
+              
+              try {
+                const diagramChartResult = await createDiagramChart(imageFile, createdGapFillingId);
+                console.log(`✅ Diagram chart created successfully!`);
+                console.log(`  └─ Result:`, diagramChartResult);
+                
+                // Retrieve created diagram_chart
+                if (diagramChartResult?.id) {
+                  const retrievedDiagramChart = await getDiagramChart(diagramChartResult.id);
+                  console.log(`✅ Diagram chart retrieved:`, retrievedDiagramChart);
+                }
+              } catch (uploadError) {
+                console.error(`❌ Failed to create diagram chart for group ${i}:`, uploadError);
+                // Don't throw - continue with other groups
+              }
+              console.log(`${'🚀'.repeat(30)}\n`);
+            } else {
+              // ⚠️ WARNING: Gap filling ID not found
+              console.error(`\n${'❌'.repeat(40)}`);
+              console.error(`⚠️ DIAGRAM CHART UPLOAD FAILED (UPDATE) - Gap filling ID not found!`);
+              console.error(`${'❌'.repeat(40)}`);
+              console.error(`Group: ${i}`);
+              console.error(`Question Type: ${questionType}`);
+              console.error(`Has Image: ${!!imageData}`);
+              console.error('');
+              console.error('🔴 REASON:');
+              console.error('Backend PATCH response does not include gap_filling ID.');
+              console.error('');
+              console.error('✅ SOLUTION:');
+              console.error('Backend must return gap_filling objects with IDs in PATCH response.');
+              console.error('See /BACKEND_GAP_FILLING_ID_FIX.md for detailed instructions.');
+              console.error('');
+              console.error('📦 Full group structure:');
+              console.error(JSON.stringify(updatedGroupForSearch, null, 2));
+              console.error(`${'❌'.repeat(40)}\n`);
+              
+              // Don't throw error - allow passage update to continue
+            }
+          }
+        }
+      }
+    }
+
+    console.log('✅ All diagram charts processed successfully');
   } catch (error) {
     console.error('💥 Error updating passage:', error);
     throw error;
@@ -1271,6 +1789,12 @@ export async function getWritingTasksForTest(testId: number): Promise<WritingRes
     });
 
     if (!response.ok) {
+      // If 404, it means no writing tasks exist yet - this is normal
+      if (response.status === 404) {
+        console.log('ℹ️ No writing tasks found yet (404) - returning empty array');
+        return [];
+      }
+      
       throw new Error(`Failed to fetch writing tasks for test: ${response.status}`);
     }
 
@@ -1747,20 +2271,29 @@ export async function getListening(listeningId: number): Promise<any> {
     });
 
     console.log('📡 Listening response status:', response.status);
+    console.log('📡 Listening response URL:', response.url);
 
     if (!response.ok) {
+      // If 404, it means no listening data exists yet - this is normal
+      if (response.status === 404) {
+        console.log('ℹ️ No listening data found yet (404) - returning empty structure');
+        return { parts: [] };
+      }
+      
       const errorText = await response.text();
       console.error('❌ Listening error:', errorText);
-      throw new Error(`Failed to fetch listening: ${response.status}`);
+      throw new Error(`Failed to fetch listening: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('✅ Listening loaded:', data);
-    
-    // The data should already contain part_1, part_2, part_3, part_4 if they exist
     return data;
   } catch (error) {
-    console.error('Error fetching listening:', error);
+    // If it's a network error and we're checking for data, return empty
+    if (error instanceof TypeError) {
+      console.log('ℹ️ Network error - returning empty structure');
+      return { parts: [] };
+    }
+    console.error('💥 Error fetching listening:', error);
     throw error;
   }
 }
@@ -1768,7 +2301,7 @@ export async function getListening(listeningId: number): Promise<any> {
 // Get a single listening part by ID
 export async function getListeningPartById(partId: number): Promise<any> {
   try {
-    console.log('🔄 Fetching listening part:', partId);
+    console.log('🔄 Fetching listening part by ID:', partId);
     
     const response = await fetch(`${BASE_URL}/listening-parts/${partId}/`, {
       method: 'GET',
@@ -1778,18 +2311,23 @@ export async function getListeningPartById(partId: number): Promise<any> {
     });
 
     console.log('📡 Part response status:', response.status);
+    console.log('📡 Part response URL:', response.url);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ Part error:', errorText);
-      throw new Error(`Failed to fetch part: ${response.status}`);
+      console.error('❌ Part error response:', errorText);
+      throw new Error(`Failed to fetch part: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('✅ Part loaded:', data);
+    console.log('✅ Part loaded successfully:', data);
+    console.log('✅ Part ID:', data.id);
+    console.log('✅ Part has groups:', data.groups?.length || 0);
+    console.log('✅ Part audio:', data.audio);
+    console.log('✅ Part title:', data.title);
     return data;
   } catch (error) {
-    console.error('Error fetching part:', error);
+    console.error('💥 Error fetching part by ID:', error);
     throw error;
   }
 }

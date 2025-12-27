@@ -14,6 +14,9 @@ import { TableCompletionEditorIndexed, IndexedTableData } from './TableCompletio
 import { deserializeTableData, serializeTableData, tableDataToBackend } from '../lib/tableCompletionHelper';
 import { indexedTableDataToBackend, indexedTableDataFromBackend } from '../lib/tableCompletionHelperIndexed';
 import { SuccessAnimation } from './SuccessAnimation';
+import { FormCompletionInputs } from './FormCompletionInputs';
+import { convertFormCompletionToGapFilling, validateFormCompletionData } from '../utils/formCompletionConverter';
+import { ListeningMultipleChoiceEditor, ListeningMultipleChoiceData } from './ListeningMultipleChoiceEditor';
 
 interface ListeningFormProps {
   questionTypes: QuestionType[];
@@ -23,6 +26,7 @@ interface ListeningFormProps {
   initialGroups?: QuestionGroup[];
   onSave: (data: { title: string; audioFile?: File; groups: QuestionGroup[] }) => Promise<void>;
   saving: boolean;
+  disabled?: boolean;
 }
 
 export function ListeningForm({
@@ -33,6 +37,7 @@ export function ListeningForm({
   initialGroups = [],
   onSave,
   saving,
+  disabled = false,
 }: ListeningFormProps) {
   const [title, setTitle] = useState(initialTitle);
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -126,7 +131,7 @@ export function ListeningForm({
     }
 
     if (groups.length === 0) {
-      alert('Kamida bitta savol guruhi qo\'shing');
+      alert('Kamida bitta savol guruhi qo\'shish kerak');
       return;
     }
 
@@ -161,6 +166,21 @@ export function ListeningForm({
         }
         if (!group.map_diagram.image) {
           alert(`Guruh ${i + 1}: Map/Diagram rasmini yuklang`);
+          return;
+        }
+      }
+      
+      // Validate form_completion if it's form_completion
+      if (group.question_type === 'form_completion') {
+        if (!group.form_completion || !group.form_completion.body || group.form_completion.body.trim().length === 0) {
+          alert(`Guruh ${i + 1}: Form Completion matni to'ldirilmagan`);
+          return;
+        }
+        
+        // Check if there are numbered gaps
+        const gapMatches = group.form_completion.body.match(/\((\d+)\)/g);
+        if (!gapMatches || gapMatches.length === 0) {
+          alert(`Guruh ${i + 1}: Form Completion matnida bo'sh joylar ((1), (2), ...) yo'q`);
           return;
         }
       }
@@ -252,6 +272,26 @@ export function ListeningForm({
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
+      {/* Debug Panel - Show loaded data from API */}
+      {initialGroups && initialGroups.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-yellow-900 mb-2">
+            🔍 DEBUG: API'dan yuklangan ma'lumotlar
+          </h4>
+          <div className="text-xs text-yellow-900 space-y-1">
+            <div><strong>Title:</strong> {initialTitle || 'N/A'}</div>
+            <div><strong>Audio URL:</strong> {initialAudioUrl || 'N/A'}</div>
+            <div><strong>Groups Count:</strong> {initialGroups.length}</div>
+            <div className="mt-2">
+              <strong>Groups:</strong>
+              <pre className="mt-1 bg-white p-2 rounded text-xs overflow-auto max-h-40">
+                {JSON.stringify(initialGroups, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Part Title */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
         <h3 className="text-lg text-slate-900">Part Ma'lumotlari</h3>
@@ -404,10 +444,15 @@ export function ListeningForm({
                 'matching_information',
                 'matching_sentence_endings',
                 'matching_features',
-                'multiple_choice',
+              ].includes(questionTypeName);
+
+              const isMultipleChoice = [
+                'multiple_choice_one',
+                'multiple_choice_multiple',
               ].includes(questionTypeName);
 
               const isMapDiagram = questionTypeName === 'map_diagram_labeling';
+              const isFormCompletion = questionTypeName === 'form_completion';
 
               return (
                 <div key={index} className="border border-slate-200 rounded-lg overflow-hidden">
@@ -469,6 +514,7 @@ export function ListeningForm({
                               gap_filling: undefined,
                               identify_info: undefined,
                               matching_item: undefined,
+                              multiple_choice_data: undefined,
                             })
                           }
                           className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] bg-slate-50"
@@ -539,6 +585,20 @@ export function ListeningForm({
                           />
                         </div>
                       </div>
+
+                      {/* Multiple Choice Editor */}
+                      {isMultipleChoice && (
+                        <div className="space-y-4 pt-4 border-t border-slate-300">
+                          <ListeningMultipleChoiceEditor
+                            data={group.multiple_choice_data as ListeningMultipleChoiceData}
+                            onChange={(data) => {
+                              updateGroup(index, { multiple_choice_data: data });
+                            }}
+                            questionNumberStart={group.from_value || 1}
+                            questionNumberEnd={group.to_value || 1}
+                          />
+                        </div>
+                      )}
 
                       {/* Gap Filling Fields */}
                       {isGapFilling && (
@@ -825,72 +885,62 @@ export function ListeningForm({
                                   },
                                 })
                               }
-                              placeholder="Masalan: Label the following map..."
-                              maxLength={25}
+                              placeholder="Masalan: Label the map/diagram"
                               className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
                             />
-                            <p className="text-xs text-slate-500 mt-1">Maksimal 25 ta belgi</p>
                           </div>
 
                           <div>
                             <label className="block text-sm text-slate-700 mb-2">
                               Map/Diagram Rasmi <span className="text-red-500">*</span>
                             </label>
-                            <div className="space-y-3">
-                              {group.map_diagram?.image && (
-                                <div className="relative border-2 border-slate-300 rounded-xl overflow-hidden shadow-md">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  updateGroup(index, {
+                                    map_diagram: {
+                                      title: group.map_diagram?.title || '',
+                                      image: file,
+                                    },
+                                  });
+                                }
+                              }}
+                              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                            />
+                            {group.map_diagram?.image && (
+                              <div className="mt-3 rounded-lg overflow-hidden border-2 border-slate-200">
+                                {group.map_diagram.image instanceof File ? (
                                   <img
-                                    src={typeof group.map_diagram.image === 'string' ? group.map_diagram.image : URL.createObjectURL(group.map_diagram.image)}
-                                    alt="Map/Diagram"
-                                    className="w-full max-h-96 object-contain bg-slate-50"
+                                    src={URL.createObjectURL(group.map_diagram.image)}
+                                    alt="Map/Diagram preview"
+                                    className="w-full h-auto"
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateGroup(index, {
-                                        map_diagram: {
-                                          title: group.map_diagram?.title || '',
-                                          image: '',
-                                        },
-                                      })
-                                    }
-                                    className="absolute top-3 right-3 p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 shadow-lg transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              )}
-                              
-                              {!group.map_diagram?.image && (
-                                <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50 hover:bg-slate-100 transition-colors">
-                                  <div className="w-16 h-16 bg-gradient-to-br from-slate-200 to-slate-300 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                    <Upload className="w-8 h-8 text-slate-500" />
-                                  </div>
-                                  <p className="text-slate-600 mb-4">Rasm yuklang</p>
-                                  <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#042d62] text-white rounded-xl hover:bg-[#053a75] cursor-pointer transition-all shadow-md hover:shadow-lg">
-                                    <Upload className="w-4 h-4" />
-                                    Fayl Tanlash
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          updateGroup(index, {
-                                            map_diagram: {
-                                              title: group.map_diagram?.title || '',
-                                              image: file,
-                                            },
-                                          });
-                                        }
-                                      }}
-                                      className="hidden"
-                                    />
-                                  </label>
-                                </div>
-                              )}
-                            </div>
+                                ) : (
+                                  <img
+                                    src={group.map_diagram.image as string}
+                                    alt="Map/Diagram"
+                                    className="w-full h-auto"
+                                  />
+                                )}
+                              </div>
+                            )}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Form Completion Fields */}
+                      {isFormCompletion && (
+                        <div className="space-y-4 pt-4 border-t border-slate-300">
+                          <FormCompletionInputs
+                            data={group.form_completion}
+                            onChange={(formData) => {
+                              updateGroup(index, { form_completion: formData });
+                            }}
+                            questionNumberStart={group.from_value || 1}
+                          />
                         </div>
                       )}
                     </div>
@@ -903,34 +953,37 @@ export function ListeningForm({
       )}
 
       {/* Save Button */}
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-4 sticky bottom-4 bg-white rounded-xl shadow-lg border-2 border-slate-200 p-4">
+        {showSuccessAnimation && (
+          <SuccessAnimation
+            message="Part muvaffaqiyatli saqlandi!"
+            onComplete={() => setShowSuccessAnimation(false)}
+          />
+        )}
+        
         <button
           type="button"
           onClick={handleSave}
           disabled={saving || !hasChanges()}
-          className="flex items-center gap-3 px-8 py-3.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40"
+          className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all ${
+            saving || !hasChanges()
+              ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+              : 'bg-[#042d62] text-white hover:bg-[#053a75] shadow-md hover:shadow-lg'
+          }`}
         >
           {saving ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="font-medium">Saqlanmoqda...</span>
+              Saqlanmoqda...
             </>
           ) : (
             <>
-              <CheckCircle2 className="w-5 h-5" />
-              <span className="font-medium">{initialAudioId ? 'Yangilash' : 'Saqlash'}</span>
+              <Save className="w-5 h-5" />
+              Part ni Saqlash
             </>
           )}
         </button>
       </div>
-
-      {/* Success Animation */}
-      <SuccessAnimation 
-        show={showSuccessAnimation}
-        onClose={() => setShowSuccessAnimation(false)}
-        title={initialAudioId ? "Muvaffaqiyatli yangilandi!" : "Muvaffaqiyatli saqlandi!"}
-        message={`Listening part muvaffaqiyatli ${initialAudioId ? 'yangilandi' : 'saqlandi'}`}
-      />
     </div>
   );
 }

@@ -31,6 +31,12 @@ export function CreateTestModal({ onClose, onTestCreated }: CreateTestModalProps
       return;
     }
 
+    // Validate test name length (max 35 characters)
+    if (testName.trim().length > 35) {
+      setError('Test nomi 35 ta belgidan oshmasligi kerak');
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
@@ -109,6 +115,7 @@ export function CreateTestModal({ onClose, onTestCreated }: CreateTestModalProps
           <div>
             <label className="block text-slate-700 mb-2">
               Test Nomi <span className="text-red-500">*</span>
+              <span className="text-slate-500 text-sm ml-2">({testName.length}/35)</span>
             </label>
             <input
               type="text"
@@ -121,6 +128,7 @@ export function CreateTestModal({ onClose, onTestCreated }: CreateTestModalProps
               className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#042d62] focus:border-transparent bg-slate-50"
               disabled={loading}
               autoFocus
+              maxLength={35}
             />
             {error && (
               <p className="text-sm text-red-600 mt-2">{error}</p>

@@ -12,7 +12,7 @@ export const READING_QUESTION_TYPES = [
   { id: 8, value: 'sentence_completion', label: 'Sentence Completion', tooltip: 'Complete sentences with correct words' },
   { id: 9, value: 'summary_completion', label: 'Summary Completion', tooltip: 'Fill in blanks in summary' },
   { id: 10, value: 'table_completion', label: 'Table Completion', tooltip: 'Complete table with correct information' },
-  { id: 11, value: 'flow_chart_completion', label: 'Flow-chart Completion', tooltip: 'Complete flow-chart with correct steps' },
+  { id: 11, value: 'flowchart_completion', label: 'Flow-chart Completion', tooltip: 'Complete flow-chart with correct steps' },
   { id: 12, value: 'diagram_labeling', label: 'Diagram Labeling', tooltip: 'Label diagram parts correctly' },
   { id: 13, value: 'short_answer', label: 'Short Answer Questions', tooltip: 'Answer questions with short responses' },
 ];

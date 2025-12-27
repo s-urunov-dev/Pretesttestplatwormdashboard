@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { BookOpen, Headphones, PenTool, ChevronLeft, Save, Loader2, Plus, Trash2, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { BookOpen, Headphones, PenTool, ChevronLeft, Save, Loader2, Plus, Trash2, ChevronDown, ChevronUp, X, Upload, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
 import {
   getReadingQuestionTypes,
   getListeningQuestionTypes,
@@ -35,6 +35,21 @@ import { MatchingHeadingsInputs } from '../components/MatchingHeadingsInputs';
 import { MatchingInformationInputs } from '../components/MatchingInformationInputs';
 import { MatchingSentenceEndingsInputs } from '../components/MatchingSentenceEndingsInputs';
 import { MatchingFeaturesInputs } from '../components/MatchingFeaturesInputs';
+import { TrueFalseNotGivenInputs } from '../components/TrueFalseNotGivenInputs';
+import { SentenceCompletionInputs } from '../components/SentenceCompletionInputs';
+import { SummaryCompletionInputs } from '../components/SummaryCompletionInputs';
+import { FlowChartCompletionInputs } from '../components/FlowChartCompletionInputs';
+import { DiagramLabelingInputs } from '../components/DiagramLabelingInputs';
+import { ShortAnswerInputs } from '../components/ShortAnswerInputs';
+import { FormCompletionInputs } from '../components/FormCompletionInputs';
+import { convertSentenceCompletionToGapFilling } from '../utils/sentenceCompletionConverter';
+import { convertGapFillingToSentenceCompletion } from '../utils/gapFillingToSentenceCompletion';
+import { convertSummaryCompletionToGapFilling, convertGapFillingToSummaryCompletion } from '../utils/summaryCompletionConverter';
+import { convertFlowChartCompletionToGapFilling, convertGapFillingToFlowChartCompletion } from '../utils/flowChartCompletionConverter';
+import { convertDiagramLabelingToGapFilling, convertGapFillingToDiagramLabeling } from '../utils/diagramLabelingConverter';
+import { convertShortAnswerToGapFilling, convertGapFillingToShortAnswer } from '../utils/shortAnswerConverter';
+import { convertFormCompletionToBackend, validateFormCompletionData, convertBackendToFormCompletion } from '../utils/formCompletionConverter';
+import { BackendErrorAlert } from '../components/BackendErrorAlert';
 
 type SectionType = 'reading' | 'listening' | 'writing';
 type SubType = 'passage1' | 'passage2' | 'passage3' | 'part_1' | 'part_2' | 'part_3' | 'part_4' | 'task1' | 'task2' | 'bulk_passages';
@@ -55,6 +70,7 @@ export function AddQuestionPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingPassages, setLoadingPassages] = useState(false);
+  const [passagesError, setPassagesError] = useState<Error | null>(null);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -67,6 +83,10 @@ export function AddQuestionPage() {
   const [parts, setParts] = useState<any[]>([]);
   const [audioUrl, setAudioUrl] = useState('');
   const [loadingParts, setLoadingParts] = useState(false);
+  const [currentPartId, setCurrentPartId] = useState<number | undefined>();
+  
+  // Track which subType we've loaded data for (to prevent duplicate loads)
+  const lastLoadedSubTypeRef = useRef<string>('');
   
   // Writing tasks state
   const [writingTasks, setWritingTasks] = useState<any[]>([]);
@@ -133,7 +153,16 @@ export function AddQuestionPage() {
   // Load passages when reading section is selected and readingId is available
   useEffect(() => {
     if (selectedSection === 'reading' && readingId) {
+      // ✅ Clear state before loading new data
+      setTitle('');
+      setBody('');
+      setGroups([]);
+      setExpandedGroups([]);
+      
       loadPassages();
+    } else if (selectedSection !== 'reading') {
+      // Clear passages when switching away from reading section
+      setPassages([]);
     }
   }, [readingId, selectedSection]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -147,9 +176,22 @@ export function AddQuestionPage() {
   // Load listening parts when listening section is selected
   useEffect(() => {
     if (selectedSection === 'listening' && listeningId) {
+      // ✅ Clear state before loading new data
+      setTitle('');
+      setBody('');
+      setGroups([]);
+      setExpandedGroups([]);
+      setAudioUrl('');
+      lastLoadedSubTypeRef.current = ''; // Reset tracking
+      
       loadParts();
       // Load listening question types
       loadListeningQuestionTypes();
+    } else if (selectedSection !== 'listening') {
+      // Clear parts when switching away from listening section
+      setParts([]);
+      setAudioUrl('');
+      lastLoadedSubTypeRef.current = ''; // Reset tracking
     }
   }, [listeningId, selectedSection]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -158,7 +200,6 @@ export function AddQuestionPage() {
   const loadListeningQuestionTypes = async () => {
     try {
       const types = await getListeningQuestionTypes();
-      console.log('📦 Listening question types:', types);
       setListeningQuestionTypes(types);
     } catch (error) {
       console.error('Error loading listening question types:', error);
@@ -167,10 +208,25 @@ export function AddQuestionPage() {
 
   // Load existing part data when sub type changes
   useEffect(() => {
-    if (selectedSection === 'listening' && parts.length > 0) {
-      loadPartData();
+    if (selectedSection === 'listening') {
+      const subTypeKey = `${selectedSubType}-${parts.length}`;
+      if (lastLoadedSubTypeRef.current === subTypeKey) {
+        return;
+      }
+      
+      setTitle('');
+      setAudioUrl('');
+      setGroups([]);
+      setExpandedGroups([]);
+      
+      if (parts.length > 0) {
+        loadPartData();
+        lastLoadedSubTypeRef.current = subTypeKey;
+      } else {
+        lastLoadedSubTypeRef.current = '';
+      }
     }
-  }, [selectedSubType, parts]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedSubType, parts.length, selectedSection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load existing passage data when sub type changes
   useEffect(() => {
@@ -181,6 +237,13 @@ export function AddQuestionPage() {
     
     if (selectedSection === 'reading' && passages.length > 0) {
       console.log('✅ Calling loadPassageData...');
+      
+      // ✅ Clear form first, then load new data
+      setTitle('');
+      setBody('');
+      setGroups([]);
+      setExpandedGroups([]);
+      
       loadPassageData();
     } else {
       console.log('❌ Not calling loadPassageData - conditions not met');
@@ -192,12 +255,16 @@ export function AddQuestionPage() {
     
     try {
       setLoadingPassages(true);
+      setPassagesError(null); // Clear previous errors
       const response = await getReadingPassages(readingId);
       console.log('📦 Passages response:', response);
       console.log('📦 Passages results:', response.results);
       setPassages(response.results || []);
     } catch (error) {
-      console.error('Error loading passages:', error);
+      // If error occurs, just set empty passages array - don't show error
+      console.log('ℹ️ No passages data available yet');
+      setPassages([]);
+      setPassagesError(null); // Don't set error for missing data
     } finally {
       setLoadingPassages(false);
     }
@@ -246,11 +313,38 @@ export function AddQuestionPage() {
         
         // Convert gap_containers to gap_filling (now it's an object)
         if (group.gap_containers) {
-          convertedGroup.gap_filling = {
+          const gapFillingData = {
             title: group.gap_containers.title || '',
             principle: group.gap_containers.principle || group.gap_containers.criteria || 'NMT_TWO',
             body: group.gap_containers.body || '',
           };
+          
+          convertedGroup.gap_filling = gapFillingData;
+          
+          // 🔄 SPECIAL: If question_type is sentence_completion AND no explicit sentence_completion data
+          if (questionType === 'sentence_completion' && !group.sentence_completion) {
+            convertedGroup.sentence_completion = convertGapFillingToSentenceCompletion(gapFillingData);
+          }
+          
+          // 🔄 SPECIAL: If question_type is summary_completion AND no explicit summary_completion data
+          if (questionType === 'summary_completion' && !group.summary_completion) {
+            convertedGroup.summary_completion = convertGapFillingToSummaryCompletion(gapFillingData);
+          }
+          
+          // 🔄 SPECIAL: If question_type is flowchart_completion AND no explicit flowchart_completion data
+          if (questionType === 'flowchart_completion' && !group.flowchart_completion) {
+            convertedGroup.flowchart_completion = convertGapFillingToFlowChartCompletion(gapFillingData);
+          }
+          
+          // 🔄 SPECIAL: If question_type is diagram_labeling AND no explicit diagram_labeling data
+          if (questionType === 'diagram_labeling' && !group.diagram_labeling) {
+            convertedGroup.diagram_labeling = convertGapFillingToDiagramLabeling(gapFillingData);
+          }
+          
+          // 🔄 SPECIAL: If question_type is short_answer AND no explicit short_answer data
+          if (questionType === 'short_answer' && !group.short_answer) {
+            convertedGroup.short_answer = convertGapFillingToShortAnswer(gapFillingData);
+          }
         }
 
         // Convert identify_info (now it's an object)
@@ -258,6 +352,25 @@ export function AddQuestionPage() {
           convertedGroup.identify_info = {
             title: group.identify_info.title || '',
             question: group.identify_info.question || [],
+          };
+        }
+
+        // Convert sentence_completion (if explicitly provided by backend)
+        if (group.sentence_completion) {
+          convertedGroup.sentence_completion = {
+            title: group.sentence_completion.title || '',
+            instruction: group.sentence_completion.instruction || '',
+            sentences: group.sentence_completion.sentences || [],
+          };
+        }
+
+        // Convert summary_completion (if explicitly provided by backend)
+        if (group.summary_completion) {
+          convertedGroup.summary_completion = {
+            title: group.summary_completion.title || '',
+            instruction: group.summary_completion.instruction || '',
+            summary: group.summary_completion.summary || '',
+            options: group.summary_completion.options || [],
           };
         }
 
@@ -270,6 +383,58 @@ export function AddQuestionPage() {
             variant_type: group.matching.variant_type || 'letter',
             answer_count: group.matching.answer_count || 1,
           };
+          
+          // 🔄 NEW: Convert matching to multiple_choice_data for multiple_choice question types (Reading)
+          if (questionType === 'multiple_choice_one' || questionType === 'multiple_choice_multiple') {
+            const statements = group.matching.statement || [];
+            const options = group.matching.option || [];
+            
+            // Build questions array from statements and options
+            const questions = statements.map((statement: string, idx: number) => {
+              // Get options for this question (array format: ["text1", "text2", ...])
+              const questionOptionsArray = options[idx] || [];
+              
+              // Determine variant type
+              const variantType = group.matching.variant_type || 'letter';
+              
+              // Generate keys based on variant type
+              const generateKey = (index: number) => {
+                if (variantType === 'letter') {
+                  return String.fromCharCode(65 + index); // A, B, C...
+                } else if (variantType === 'number') {
+                  return String(index + 1); // 1, 2, 3...
+                } else {
+                  const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+                  return romanNumerals[index] || String(index + 1);
+                }
+              };
+              
+              // Convert from ["text1", "text2"] to [{key: "A", text: "text1"}, ...]
+              const optionsFormatted = questionOptionsArray.map((text: string, optIdx: number) => ({
+                key: generateKey(optIdx),
+                text: text
+              }));
+              
+              return {
+                question: statement,
+                options: optionsFormatted,
+                correctAnswer: group.matching.answer_count > 1 ? [] : '' // Will be set by user
+              };
+            });
+            
+            convertedGroup.multiple_choice_data = {
+              title: group.matching.title || '',
+              variant_type: group.matching.variant_type || 'letter',
+              answer_count: group.matching.answer_count || 1,
+              questions: questions,
+            };
+            
+            console.log('🔄 Converted matching to multiple_choice_data for Reading:', {
+              questions_count: questions.length,
+              variant_type: group.matching.variant_type,
+              answer_count: group.matching.answer_count,
+            });
+          }
         }
 
         console.log('✨ Converted group:', convertedGroup);
@@ -277,6 +442,7 @@ export function AddQuestionPage() {
       });
 
       console.log('🎯 All converted groups:', convertedGroups);
+      console.log('🔄 Calling setGroups with:', convertedGroups.length, 'groups');
       setGroups(convertedGroups);
       
       // Expand all groups when loading existing data
@@ -307,96 +473,108 @@ export function AddQuestionPage() {
       console.log('📦 Writing tasks:', response);
       setWritingTasks(response || []);
     } catch (error) {
-      console.error('Error loading writing tasks:', error);
+      // If error occurs, just set empty writing tasks array - don't show error
+      console.log('ℹ️ No writing tasks data available yet');
+      setWritingTasks([]);
     } finally {
       setLoadingWritingTasks(false);
     }
   };
 
   const loadParts = async () => {
-    if (!listeningId) return;
+    if (!listeningId) {
+      return;
+    }
     
     try {
       setLoadingParts(true);
+      
       const response = await getListening(listeningId);
-      console.log('📦 Listening response:', response);
+      console.log('🎯 LISTENING RESPONSE:', response);
       
-      // Extract parts from response (part_1, part_2, part_3, part_4)
-      const partsArray = [];
+      let partsArray = [];
       
-      // Each part should contain the full part object with groups
-      // If it's just an ID (number), we need to fetch the full part separately
-      const partTypes: PartType[] = ['part_1', 'part_2', 'part_3', 'part_4'];
-      
-      for (const partType of partTypes) {
-        const partData = response[partType];
+      if (response.parts && Array.isArray(response.parts)) {
+        console.log('✅ Using response.parts array');
+        partsArray = response.parts.map((part: any) => ({
+          ...part,
+          part_type: part.part_type || `part_${part.id}`,
+        }));
+      } else {
+        console.log('⚠️ No response.parts array, checking individual part fields');
+        const partTypes: PartType[] = ['part_1', 'part_2', 'part_3', 'part_4'];
         
-        if (partData) {
-          // Check if it's a full object or just an ID
-          if (typeof partData === 'object' && partData !== null) {
-            // Full object - use it directly
-            console.log(`✅ Part ${partType} is a full object:`, partData);
-            partsArray.push({
-              ...partData,
-              part_type: partType,
-            });
-          } else if (typeof partData === 'number') {
-            // Just an ID - fetch the full part
-            console.log(`🔄 Part ${partType} is ID only (${partData}), fetching full data...`);
-            try {
-              const fullPartData = await getListeningPartById(partData);
-              console.log(`✅ Full part data fetched for ${partType}:`, fullPartData);
+        for (const partType of partTypes) {
+          const partData = response[partType];
+          
+          if (partData) {
+            if (typeof partData === 'object' && partData !== null) {
               partsArray.push({
-                ...fullPartData,
+                ...partData,
                 part_type: partType,
               });
-            } catch (fetchError) {
-              console.error(`❌ Failed to fetch full data for part ${partType}:`, fetchError);
-              // Fallback: add minimal data
-              partsArray.push({
-                id: partData,
-                part_type: partType,
-                groups: [],
-              });
+            } else if (typeof partData === 'number') {
+              try {
+                const fullPartData = await getListeningPartById(partData);
+                partsArray.push({
+                  ...fullPartData,
+                  part_type: partType,
+                });
+              } catch (fetchError) {
+                console.error(`Failed to fetch part ${partType}:`, fetchError);
+                partsArray.push({
+                  id: partData,
+                  part_type: partType,
+                  groups: [],
+                });
+              }
             }
           }
         }
       }
       
-      console.log('📦 Parts array with part_type:', partsArray);
+      console.log('📦 FINAL PARTS ARRAY:', partsArray);
       setParts(partsArray);
     } catch (error) {
-      console.error('Error loading parts:', error);
+      // If error occurs, just set empty parts array - don't show error
+      console.log('ℹ️ No parts data available yet');
+      setParts([]);
     } finally {
       setLoadingParts(false);
     }
   };
 
   const loadPartData = () => {
+    console.log('━━━━━━━━━━━���━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🔍 loadPartData called');
     console.log('🔍 selectedSubType:', selectedSubType);
-    console.log('🔍 parts:', parts);
+    console.log('🔍 parts array length:', parts.length);
+    console.log('🔍 parts array:', parts);
     
     // Find part matching current sub type
     const currentPart = parts.find(
       (p) => p.part_type === selectedSubType
     );
 
+    console.log('🔍 currentPart found:', !!currentPart);
     console.log('🔍 currentPart:', currentPart);
 
     if (currentPart) {
-      console.log('📄 Loading part data:', currentPart);
-      console.log('📄 Groups in part:', currentPart.groups);
+      // ✅ Set current part ID for updates
+      setCurrentPartId(currentPart.id);
       
       // Load title and audio
       setTitle(currentPart.title || '');
-      setAudioUrl(currentPart.audio || '');
+      // Handle audio - API returns audio as object with audio field, or direct URL
+      const audioUrlFromPart = typeof currentPart.audio === 'object' && currentPart.audio?.audio
+        ? currentPart.audio.audio
+        : currentPart.audio || '';
+      setAudioUrl(audioUrlFromPart);
 
-      // Convert backend groups to frontend format
-      const convertedGroups: QuestionGroup[] = (currentPart.groups || []).map((group: any) => {
-        console.log('🔄 Converting group:', group);
-        
-        // Backend returns listening_question_type as string (for listening parts)
+      // ✅ Convert backend groups to frontend format
+      const backendGroups = currentPart.groups || currentPart.question_groups || [];
+      
+      const convertedGroups: QuestionGroup[] = backendGroups.map((group: any) => {
         const questionType = typeof group.listening_question_type === 'string' 
           ? group.listening_question_type 
           : group.listening_question_type?.type;
@@ -407,33 +585,100 @@ export function AddQuestionPage() {
           to_value: group.to_value,
         };
 
-        // Convert completion to gap_filling (new API structure)
-        if (group.completion) {
-          convertedGroup.gap_filling = {
-            title: group.completion.title || '',
-            principle: group.completion.principle || 'NMT_TWO',
-            body: group.completion.body || '',
+        const gapData = group.gap_containers || group.completion || group.gap_filling;
+        
+        if (gapData) {
+          const gapFillingData = {
+            title: gapData.title || '',
+            principle: gapData.principle || gapData.criteria || 'NMT_TWO',
+            body: gapData.body || '',
           };
-        }
-        // Fallback: Convert gap_containers to gap_filling (old structure)
-        else if (group.gap_containers) {
-          convertedGroup.gap_filling = {
-            title: group.gap_containers.title || '',
-            principle: group.gap_containers.principle || group.gap_containers.criteria || 'NMT_TWO',
-            body: group.gap_containers.body || '',
-          };
+          
+          convertedGroup.gap_filling = gapFillingData;
+          
+          if (questionType === 'sentence_completion' && !group.sentence_completion) {
+            convertedGroup.sentence_completion = convertGapFillingToSentenceCompletion(gapFillingData);
+          }
+          
+          if (questionType === 'form_completion') {
+            convertedGroup.form_completion = {
+              title: gapFillingData.title || 'Complete the form below',
+              body: gapFillingData.body || '',
+              principle: gapFillingData.principle || 'NMT_TWO',
+            };
+          }
+          
+          if (questionType === 'summary_completion' && !group.summary_completion) {
+            convertedGroup.summary_completion = {
+              title: gapFillingData.title || 'Complete the summary below.',
+              body: gapFillingData.body || '',
+              principle: gapFillingData.principle || 'NMT_TWO',
+            };
+          }
+          
+          if (questionType === 'flow_chart_completion' && !group.flow_chart_completion) {
+            convertedGroup.flow_chart_completion = {
+              title: gapFillingData.title || 'Complete the flow chart below.',
+              body: gapFillingData.body || '',
+              principle: gapFillingData.principle || 'NMT_TWO',
+            };
+          }
         }
 
-        // Convert matching_statement to matching_item (new API structure)
+        // Convert matching_statement to matching_item OR multiple_choice_data (new API structure)
         if (group.matching_statement && Array.isArray(group.matching_statement) && group.matching_statement.length > 0) {
           const firstStatement = group.matching_statement[0];
-          convertedGroup.matching_item = {
-            title: firstStatement.title || '',
-            statement: firstStatement.statement || [],
-            option: firstStatement.option || [],
-            variant_type: firstStatement.variant_type || 'letter',
-            answer_count: firstStatement.answer_count || 1,
-          };
+          
+          // Check if this is multiple_choice (multiple_choice_one or multiple_choice_multiple)
+          if (questionType === 'multiple_choice_one' || questionType === 'multiple_choice_multiple') {
+            // Convert to multiple_choice_data format
+            const statements = firstStatement.statement || [];
+            const options = firstStatement.option || [];
+            
+            // Build questions array from statements and options
+            const questions = statements.map((statement: string, idx: number) => {
+              // Get options for this question (array of strings)
+              const questionOptionsArray = options[idx] || [];
+              
+              // Generate keys based on variant_type
+              const variantType = firstStatement.variant_type || 'letter';
+              const optionsArray = questionOptionsArray.map((text: string, optIdx: number) => {
+                let key = '';
+                if (variantType === 'letter') {
+                  key = String.fromCharCode(65 + optIdx); // A, B, C, D...
+                } else if (variantType === 'number') {
+                  key = String(optIdx + 1); // 1, 2, 3, 4...
+                } else {
+                  // Roman numerals
+                  const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+                  key = romanNumerals[optIdx] || String(optIdx + 1);
+                }
+                return { key, text };
+              });
+              
+              return {
+                question: statement,
+                options: optionsArray,
+                correctAnswer: firstStatement.answer_count > 1 ? [] : '' // Will be set by user
+              };
+            });
+            
+            convertedGroup.multiple_choice_data = {
+              title: firstStatement.title || '',
+              variant_type: firstStatement.variant_type || 'letter',
+              answer_count: firstStatement.answer_count || 1,
+              questions: questions,
+            };
+          } else {
+            // Regular matching_item
+            convertedGroup.matching_item = {
+              title: firstStatement.title || '',
+              statement: firstStatement.statement || [],
+              option: firstStatement.option || [],
+              variant_type: firstStatement.variant_type || 'letter',
+              answer_count: firstStatement.answer_count || 1,
+            };
+          }
         }
         // Fallback: Convert matching (old structure)
         else if (group.matching) {
@@ -454,53 +699,46 @@ export function AddQuestionPage() {
           };
         }
 
-        // Convert table_completion (new API: index-based table_details)
+        // Convert sentence_completion
+        if (group.sentence_completion) {
+          convertedGroup.sentence_completion = {
+            title: group.sentence_completion.title || '',
+            instruction: group.sentence_completion.instruction || '',
+            sentences: group.sentence_completion.sentences || [],
+          };
+        }
+
         if (group.table_completion) {
-          console.log('🔄 Converting table_completion:', group.table_completion);
-          
           let tableDetails: any = group.table_completion.table_details;
           
-          // New API format: table_details is object with numeric keys
           if (typeof tableDetails === 'string') {
             try {
               tableDetails = JSON.parse(tableDetails);
             } catch (e) {
-              console.error('Failed to parse table_details:', e);
               tableDetails = {};
             }
           }
           
-          // Ensure tableDetails is object
           if (!tableDetails || typeof tableDetails !== 'object') {
             tableDetails = {};
           }
 
-          console.log('✅ Parsed table_details:', tableDetails);
-
-          // Store in new format (will be used by TableCompletionEditorIndexed)
           convertedGroup.table_completion = {
             principle: group.table_completion.principle || 'ONE_WORD',
             table_details: tableDetails,
           } as any;
         }
 
-        console.log('✨ Converted group:', convertedGroup);
         return convertedGroup;
       });
 
-      console.log('🎯 All converted groups:', convertedGroups);
       setGroups(convertedGroups);
       
-      // Expand all groups when loading existing data
       const allGroupIndexes = convertedGroups.map((_, index) => index);
       setExpandedGroups(allGroupIndexes);
-      
-      console.log('✅ Groups state updated. Current groups length:', convertedGroups.length);
     } else {
-      console.log('❌ No part found for selectedSubType:', selectedSubType);
-      console.log('🧹 Clearing form fields...');
-      
       // Clear form if part doesn't exist
+      setCurrentPartId(undefined);
       setTitle('');
       setAudioUrl('');
       setGroups([]);
@@ -581,6 +819,23 @@ export function AddQuestionPage() {
         alert(`Guruh ${i + 1}: Gap Filling savol uchun sarlavha to'ldirish majburiy!`);
         return;
       }
+      if (group.sentence_completion) {
+        if (!group.sentence_completion.title || !group.sentence_completion.title.trim()) {
+          alert(`Guruh ${i + 1}: Sentence Completion uchun title to'ldirish majburiy!`);
+          return;
+        }
+        if (!group.sentence_completion.sentences || group.sentence_completion.sentences.length === 0) {
+          alert(`Guruh ${i + 1}: Sentence Completion uchun kamida bitta jumla qo'shing!`);
+          return;
+        }
+      }
+      if (group.form_completion) {
+        const validation = validateFormCompletionData(group.form_completion);
+        if (!validation.valid) {
+          alert(`Guruh ${i + 1}: Form Completion xatolari:\n${validation.errors.join('\n')}`);
+          return;
+        }
+      }
     }
 
     setSaving(true);
@@ -591,6 +846,84 @@ export function AddQuestionPage() {
       // Clean up groups before saving - remove empty lines from arrays
       const cleanedGroups = groups.map(group => {
         const cleanedGroup = { ...group };
+        
+        // Convert sentence_completion to gap_filling for backend compatibility
+        if (cleanedGroup.sentence_completion && cleanedGroup.question_type === 'sentence_completion') {
+          cleanedGroup.gap_filling = convertSentenceCompletionToGapFilling(
+            cleanedGroup.sentence_completion,
+            cleanedGroup.from_value
+          );
+          
+          // Delete sentence_completion - backend only needs gap_filling
+          delete cleanedGroup.sentence_completion;
+        }
+        
+        // Convert summary_completion to gap_filling for backend compatibility
+        if (cleanedGroup.summary_completion && cleanedGroup.question_type === 'summary_completion') {
+          cleanedGroup.gap_filling = convertSummaryCompletionToGapFilling(
+            cleanedGroup.summary_completion
+          );
+          
+          // Delete summary_completion - backend only needs gap_filling
+          delete cleanedGroup.summary_completion;
+        }
+        
+        // Convert flowchart_completion to gap_filling for backend compatibility
+        if (cleanedGroup.flowchart_completion && cleanedGroup.question_type === 'flowchart_completion') {
+          console.log('🔄 Converting flowchart_completion:', cleanedGroup.flowchart_completion);
+          const converted = convertFlowChartCompletionToGapFilling(
+            cleanedGroup.flowchart_completion
+          );
+          console.log('✅ Converted to gap_filling:', converted);
+          cleanedGroup.gap_filling = converted;
+          
+          // Delete flowchart_completion - backend only needs gap_filling
+          delete cleanedGroup.flowchart_completion;
+        }
+        
+        // Convert diagram_labeling to gap_filling for backend compatibility
+        if (cleanedGroup.diagram_labeling && cleanedGroup.question_type === 'diagram_labeling') {
+          console.log('🔄 Converting diagram_labeling:', cleanedGroup.diagram_labeling);
+          const converted = convertDiagramLabelingToGapFilling(
+            cleanedGroup.diagram_labeling
+          );
+          console.log('✅ Converted to gap_filling:', converted);
+          cleanedGroup.gap_filling = converted;
+          
+          // Delete diagram_labeling - backend only needs gap_filling
+          delete cleanedGroup.diagram_labeling;
+        }
+        
+        // Convert short_answer to gap_filling for backend compatibility
+        if (cleanedGroup.short_answer && cleanedGroup.question_type === 'short_answer') {
+          cleanedGroup.gap_filling = convertShortAnswerToGapFilling(
+            cleanedGroup.short_answer
+          );
+          
+          // Delete short_answer - backend only needs gap_filling
+          delete cleanedGroup.short_answer;
+        }
+        
+        // Convert form_completion to gap_filling for backend compatibility
+        if (cleanedGroup.form_completion && cleanedGroup.question_type === 'form_completion') {
+          console.log('🔄 Converting form_completion:', cleanedGroup.form_completion);
+          
+          // Validate before converting
+          const validation = validateFormCompletionData(cleanedGroup.form_completion);
+          if (!validation.valid) {
+            console.error('❌ Form Completion validation failed:', validation.errors);
+            throw new Error(`Form Completion xatolari:\n${validation.errors.join('\n')}`);
+          }
+          
+          const converted = convertFormCompletionToGapFilling(
+            cleanedGroup.form_completion
+          );
+          console.log('✅ Converted to gap_filling:', converted);
+          cleanedGroup.gap_filling = converted;
+          
+          // Delete form_completion - backend only needs gap_filling
+          delete cleanedGroup.form_completion;
+        }
         
         // Clean identify_info questions - remove empty strings
         if (cleanedGroup.identify_info?.question) {
@@ -738,6 +1071,31 @@ export function AddQuestionPage() {
       return;
     }
 
+    // ✅ CHECK: If part exists, show warning about UPDATE not being supported yet
+    const existingPart = parts.find((p: any) => p.part_type === selectedSubType);
+    if (existingPart) {
+      alert(
+        `⚠️ Ogohlantirish!\n\n` +
+        `Part ${selectedSubType.slice(-1)} allaqachon mavjud (ID: ${existingPart.id}).\n\n` +
+        `🚧 Part'ni yangilash (UPDATE) funksiyasi hozircha qo'llab-quvvatlanmaydi.\n\n` +
+        `💡 Iltimos:\n` +
+        `• Boshqa part tanlang va yangi part yarating, YOKI\n` +
+        `• Backend'da UPDATE API endpoint'ini yoqing`
+      );
+      return;
+    }
+
+    // ✅ CRITICAL: Check if all 4 parts already exist
+    if (parts.length >= 4) {
+      const existingParts = parts.map((p: any) => `Part ${p.part_type.slice(-1)}`).join(', ');
+      alert(
+        `⚠️ Bu Listening uchun barcha 4 ta part allaqachon yaratilgan!\n\n` +
+        `Mavjud partlar: ${existingParts}\n\n` +
+        `📝 Yangi part qo'shish uchun yangi Test yarating.`
+      );
+      return;
+    }
+
     setSaving(true);
     try {
       console.log('🔄 Creating listening part with groups...');
@@ -772,12 +1130,32 @@ export function AddQuestionPage() {
           to_value: group.to_value,
         };
 
+        // Convert sentence_completion to gap_filling first (if applicable)
+        let gapFillingData = group.gap_filling;
+        
+        if (!gapFillingData && group.sentence_completion && group.question_type === 'sentence_completion') {
+          gapFillingData = convertSentenceCompletionToGapFilling(
+            group.sentence_completion,
+            group.from_value
+          );
+        }
+        
+        // Convert form_completion to completion (body directly - no need for questions array)
+        if (!gapFillingData && group.form_completion && group.question_type === 'form_completion') {
+          gapFillingData = {
+            title: group.form_completion.title || 'Complete the form below',
+            principle: 'NMT_TWO' as CriteriaType,
+            body: group.form_completion.body || '',
+          };
+          console.log('🔄 Converted form_completion to gap_filling:', gapFillingData);
+        }
+
         // Map gap_filling to completion
-        if (group.gap_filling) {
+        if (gapFillingData) {
           listeningGroup.completion = {
-            title: group.gap_filling.title,
-            principle: group.gap_filling.principle,
-            body: group.gap_filling.body,
+            title: gapFillingData.title,
+            principle: gapFillingData.principle,
+            body: gapFillingData.body,
           };
         }
 
@@ -790,6 +1168,34 @@ export function AddQuestionPage() {
             variant_type: group.matching_item.variant_type,
             answer_count: group.matching_item.answer_count,
           }];
+        }
+
+        // Map multiple_choice_data to matching_statement (convert dynamic format to backend format)
+        if (group.multiple_choice_data) {
+          const mcData = group.multiple_choice_data;
+          
+          // Convert questions array to statement array (question texts)
+          const statements = mcData.questions.map((q: any) => q.question);
+          
+          // Convert options from array of {key, text} to array of arrays
+          // Backend expects: [["text1", "text2", "text3"], ...]
+          const optionsFormatted = mcData.questions.map((q: any) => {
+            return q.options.map((opt: any) => opt.text);
+          });
+          
+          listeningGroup.matching_statement = [{
+            title: mcData.title || '',
+            statement: statements,
+            option: optionsFormatted,
+            variant_type: mcData.variant_type,
+            answer_count: mcData.answer_count,
+          }];
+          
+          console.log('🔄 Converted multiple_choice_data to matching_statement:', {
+            questions_count: statements.length,
+            variant_type: mcData.variant_type,
+            answer_count: mcData.answer_count,
+          });
         }
 
         // Map table_completion (new API: coordinate-based table_details)
@@ -1017,7 +1423,13 @@ export function AddQuestionPage() {
           <button
             onClick={() => {
               setSelectedSection('listening');
-              setSelectedSubType('part_1'); // Default to part_1 when switching to listening
+              lastLoadedSubTypeRef.current = ''; // Clear tracking
+              // ✅ SMART SELECTION: Choose first non-created part
+              const allPartTypes: PartType[] = ['part_1', 'part_2', 'part_3', 'part_4'];
+              const availablePart = allPartTypes.find(
+                type => !parts.some((p: any) => p.part_type === type)
+              );
+              setSelectedSubType(availablePart || 'part_1');
             }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
               selectedSection === 'listening'
@@ -1110,55 +1522,207 @@ export function AddQuestionPage() {
           {selectedSection === 'listening' && (
             <div>
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Listening Part</h3>
-              <div className="flex flex-wrap gap-3">
-                {(['part_1', 'part_2', 'part_3', 'part_4'] as const).map((type) => {
-                  const partExists = parts.some((p: any) => p.part_type === type);
-                  const isSelected = selectedSubType === type;
+              
+              {/* Loading indicator */}
+              {loadingParts && (
+                <div className="p-6 bg-white border border-slate-200 rounded-xl flex items-center justify-center gap-3">
+                  <Loader2 className="w-5 h-5 text-[#042d62] animate-spin" />
+                  <span className="text-slate-600">Part'lar yuklanmoqda...</span>
+                </div>
+              )}
+              
+              {/* Show warning if all 4 parts exist */}
+              {!loadingParts && parts.length >= 4 ? (
+                <div className="p-6 bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0 w-12 h-12 bg-amber-500 rounded-full flex items-center justify-center">
+                      <CheckCircle2 className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-amber-900 mb-2">
+                        ✅ Barcha Partlar Yaratilgan!
+                      </h4>
+                      <p className="text-sm text-amber-800 mb-3">
+                        Bu Listening test uchun barcha 4 ta part muvaffaqiyatli yaratildi. IELTS Listening testida faqat 4 ta part bo'ladi.
+                      </p>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {parts.map((p: any) => (
+                          <span key={p.id} className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-sm font-medium">
+                            ✓ Part {p.part_type.slice(-1)}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="p-3 bg-white/80 rounded-lg border border-amber-200">
+                        <p className="text-sm text-slate-700 mb-2">
+                          <strong>💡 Keyingi Qadamlar:</strong>
+                        </p>
+                        <ul className="text-sm text-slate-600 space-y-1 ml-4 list-disc">
+                          <li>Mavjud Partlarni tahrirlash uchun pastdan birini tanlang</li>
+                          <li>Yoki yangi Test yarating va yangi Listening qo'shing</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
                   
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => setSelectedSubType(type)}
-                      className={`
-                        group relative px-5 py-3 rounded-xl text-sm font-medium 
-                        transition-all duration-200 ease-out
-                        flex items-center gap-3 border-2
-                        ${isSelected
-                          ? 'bg-[#042d62] text-white border-[#042d62] shadow-lg shadow-[#042d62]/20 scale-105'
-                          : 'bg-white text-slate-700 border-slate-300 hover:border-[#042d62] hover:shadow-md hover:scale-102'
-                        }
-                      `}
-                    >
-                      {/* Number Badge */}
-                      <span className={`
-                        w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
-                        transition-all duration-200
-                        ${isSelected
-                          ? 'bg-white text-[#042d62]'
-                          : 'bg-slate-100 text-slate-600 group-hover:bg-[#042d62] group-hover:text-white'
-                        }
-                      `}>
-                        {type.slice(-1)}
-                      </span>
+                  {/* Editing interface for existing parts */}
+                  <div className="mt-6 pt-6 border-t border-amber-200">
+                    <h4 className="text-sm font-medium text-slate-700 mb-3">Mavjud Partlarni tahrirlash:</h4>
+                    <div className="flex flex-wrap gap-3">
+                      {(['part_1', 'part_2', 'part_3', 'part_4'] as const).map((type) => {
+                        const partExists = parts.some((p: any) => p.part_type === type);
+                        const isSelected = selectedSubType === type;
+                        
+                        if (!partExists) return null;
+                        
+                        return (
+                          <button
+                            key={type}
+                            onClick={() => {
+                              lastLoadedSubTypeRef.current = ''; // Clear tracking
+                              setSelectedSubType(type);
+                            }}
+                            className={`
+                              group relative px-5 py-3 rounded-xl text-sm font-medium 
+                              transition-all duration-200 ease-out
+                              flex items-center gap-3 border-2
+                              ${isSelected
+                                ? 'bg-[#042d62] text-white border-[#042d62] shadow-lg shadow-[#042d62]/20 scale-105'
+                                : 'bg-white text-slate-700 border-slate-300 hover:border-[#042d62] hover:shadow-md hover:scale-102'
+                              }
+                            `}
+                          >
+                            <span className={`
+                              w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+                              transition-all duration-200
+                              ${isSelected
+                                ? 'bg-white text-[#042d62]'
+                                : 'bg-slate-100 text-slate-600 group-hover:bg-[#042d62] group-hover:text-white'
+                              }
+                            `}>
+                              {type.slice(-1)}
+                            </span>
+                            <span className="whitespace-nowrap">
+                              Part {type.slice(-1)}
+                            </span>
+                            <span className={`ml-1 text-xs ${isSelected ? 'text-green-300' : 'text-green-600'}`}>
+                              ✓
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : !loadingParts ? (
+                <div>
+                  <div className="flex flex-wrap gap-3">
+                    {(['part_1', 'part_2', 'part_3', 'part_4'] as const).map((type) => {
+                      const partExists = parts.some((p: any) => p.part_type === type);
+                      const isSelected = selectedSubType === type;
                       
-                      {/* Label */}
-                      <span className="whitespace-nowrap">
-                        Part {type.slice(-1)}
-                      </span>
-
-                      {/* Completion Badge */}
-                      {partExists && (
-                        <span className={`
-                          ml-1 text-xs
-                          ${isSelected ? 'text-green-300' : 'text-green-600'}
-                        `}>
-                          ✓
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => {
+                            lastLoadedSubTypeRef.current = ''; // Clear tracking
+                            setSelectedSubType(type);
+                          }}
+                          disabled={partExists}
+                          className={`
+                            group relative px-5 py-3 rounded-xl text-sm font-medium 
+                            transition-all duration-200 ease-out
+                            flex items-center gap-3 border-2
+                            ${partExists
+                              ? 'bg-green-50 text-green-700 border-green-300 cursor-not-allowed opacity-75'
+                              : isSelected
+                                ? 'bg-[#042d62] text-white border-[#042d62] shadow-lg shadow-[#042d62]/20 scale-105'
+                                : 'bg-white text-slate-700 border-slate-300 hover:border-[#042d62] hover:shadow-md hover:scale-102'
+                            }
+                          `}
+                        >
+                          <span className={`
+                            w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+                            transition-all duration-200
+                            ${partExists
+                              ? 'bg-green-200 text-green-800'
+                              : isSelected
+                                ? 'bg-white text-[#042d62]'
+                                : 'bg-slate-100 text-slate-600 group-hover:bg-[#042d62] group-hover:text-white'
+                            }
+                          `}>
+                            {type.slice(-1)}
+                          </span>
+                          <span className="whitespace-nowrap">
+                            Part {type.slice(-1)}
+                          </span>
+                          {partExists && (
+                            <span className="ml-1 text-xs text-green-600 font-semibold">
+                              ✓ Yaratilgan
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Info message when some parts exist */}
+                  {parts.length > 0 && parts.length < 4 && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mt-4">
+                      <p className="text-sm text-blue-900">
+                        💡 <strong>{parts.length} ta part yaratilgan</strong> - Yana {4 - parts.length} ta part qo'shishingiz mumkin.
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Editing interface for existing parts */}
+                  {parts.length > 0 && (
+                    <div className="mt-6">
+                      <h4 className="text-sm font-medium text-slate-700 mb-3">Mavjud Partlarni tahrirlash:</h4>
+                      <div className="flex flex-wrap gap-3">
+                        {(['part_1', 'part_2', 'part_3', 'part_4'] as const).map((type) => {
+                          const partExists = parts.some((p: any) => p.part_type === type);
+                          const isSelected = selectedSubType === type;
+                          
+                          if (!partExists) return null;
+                          
+                          return (
+                            <button
+                              key={type}
+                              onClick={() => setSelectedSubType(type)}
+                              className={`
+                                group relative px-5 py-3 rounded-xl text-sm font-medium 
+                                transition-all duration-200 ease-out
+                                flex items-center gap-3 border-2
+                                ${isSelected
+                                  ? 'bg-[#042d62] text-white border-[#042d62] shadow-lg shadow-[#042d62]/20 scale-105'
+                                  : 'bg-white text-slate-700 border-slate-300 hover:border-[#042d62] hover:shadow-md hover:scale-102'
+                                }
+                              `}
+                            >
+                              <span className={`
+                                w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+                                transition-all duration-200
+                                ${isSelected
+                                  ? 'bg-white text-[#042d62]'
+                                  : 'bg-slate-100 text-slate-600 group-hover:bg-[#042d62] group-hover:text-white'
+                                }
+                              `}>
+                                {type.slice(-1)}
+                              </span>
+                              <span className="whitespace-nowrap">
+                                Part {type.slice(-1)}
+                              </span>
+                              <span className={`ml-1 text-xs ${isSelected ? 'text-green-300' : 'text-green-600'}`}>
+                                ✓
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -1241,7 +1805,15 @@ export function AddQuestionPage() {
                 </div>
               )}
 
-              {!loadingPassages && (
+              {/* Error Display */}
+              {!loadingPassages && passagesError && (
+                <BackendErrorAlert 
+                  error={passagesError} 
+                  onRetry={() => loadPassages()}
+                />
+              )}
+
+              {!loadingPassages && !passagesError && (
                 <>
                   {/* Passage Title & Body */}
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">
@@ -1302,9 +1874,15 @@ export function AddQuestionPage() {
                           const isExpanded = expandedGroups.includes(index);
                           
                           // Determine which fields to show based on question type
-                          const isGapFilling = ['sentence_completion', 'summary_completion', 'table_completion', 'flowchart_completion', 'diagram_labeling', 'short_answer'].includes(questionTypeName);
+                          const isGapFilling = questionTypeName === 'table_completion';
+                          const isFlowChartCompletion = questionTypeName === 'flowchart_completion';
+                          const isDiagramLabeling = questionTypeName === 'diagram_labeling';
+                          const isShortAnswer = questionTypeName === 'short_answer';
                           const isIdentifyInfo = ['true_false_not_given', 'yes_no_not_given'].includes(questionTypeName);
                           const isMatchingItem = ['matching_headings', 'matching_information', 'matching_sentence_endings', 'matching_features', 'multiple_choice'].includes(questionTypeName);
+                          const isSentenceCompletion = questionTypeName === 'sentence_completion';
+                          const isSummaryCompletion = questionTypeName === 'summary_completion';
+                          const isFormCompletion = questionTypeName === 'form_completion';
                           
                           return (
                             <div key={index} className="border border-slate-200 rounded-lg overflow-hidden">
@@ -1401,12 +1979,129 @@ export function AddQuestionPage() {
                                               title: e.target.value,
                                               principle: group.gap_filling?.principle || 'NMT_TWO',
                                               body: group.gap_filling?.body || '',
+                                              diagram_chart: group.gap_filling?.diagram_chart,
                                             }
                                           })}
                                           placeholder="Masalan: Complete the sentences"
                                           className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
                                         />
                                       </div>
+
+                                      {/* Diagram/Flowchart Image Upload - Only for specific types */}
+                                      {(isDiagramLabeling || isFlowChartCompletion) && (
+                                        <div>
+                                          <label className="block text-sm text-slate-700 mb-2 flex items-center gap-2">
+                                            <ImageIcon className="w-4 h-4" />
+                                            Diagram / Flowchart Image (ixtiyoriy)
+                                          </label>
+
+                                          {!group.gap_filling?.diagram_chart?.image ? (
+                                            <div className="space-y-3">
+                                              {/* File Upload */}
+                                              <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 bg-slate-50 hover:bg-slate-100 transition-colors">
+                                                <label className="flex flex-col items-center gap-3 cursor-pointer">
+                                                  <div className="w-16 h-16 rounded-full bg-[#042d62] flex items-center justify-center">
+                                                    <Upload className="w-8 h-8 text-white" />
+                                                  </div>
+                                                  <div className="text-center">
+                                                    <p className="text-sm font-medium text-slate-700">
+                                                      Kompyuterdan rasm yuklash
+                                                    </p>
+                                                    <p className="text-xs text-slate-500 mt-1">
+                                                      PNG, JPG yoki WEBP (Max 5MB)
+                                                    </p>
+                                                  </div>
+                                                  <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={(e) => {
+                                                      const file = e.target.files?.[0];
+                                                      if (!file) return;
+
+                                                      if (!file.type.startsWith('image/')) {
+                                                        alert('Iltimos, faqat rasm fayli yuklang!');
+                                                        return;
+                                                      }
+
+                                                      if (file.size > 5 * 1024 * 1024) {
+                                                        alert('Rasm hajmi 5MB dan kichik bo\'lishi kerak!');
+                                                        return;
+                                                      }
+
+                                                      const reader = new FileReader();
+                                                      reader.onload = (event) => {
+                                                        const base64String = event.target?.result as string;
+                                                        updateGroup(index, {
+                                                          gap_filling: {
+                                                            ...group.gap_filling,
+                                                            title: group.gap_filling?.title || '',
+                                                            principle: group.gap_filling?.principle || 'NMT_TWO',
+                                                            body: group.gap_filling?.body || '',
+                                                            diagram_chart: { image: base64String }
+                                                          }
+                                                        });
+                                                      };
+                                                      reader.readAsDataURL(file);
+                                                    }}
+                                                    className="hidden"
+                                                  />
+                                                </label>
+                                              </div>
+
+                                              <div className="text-center text-sm text-slate-500">yoki</div>
+                                              <input
+                                                type="text"
+                                                value={group.gap_filling?.diagram_chart?.image || ''}
+                                                onChange={(e) => {
+                                                  const imageUrl = e.target.value;
+                                                  updateGroup(index, {
+                                                    gap_filling: {
+                                                      ...group.gap_filling,
+                                                      title: group.gap_filling?.title || '',
+                                                      principle: group.gap_filling?.principle || 'NMT_TWO',
+                                                      body: group.gap_filling?.body || '',
+                                                      diagram_chart: imageUrl ? { image: imageUrl } : undefined
+                                                    }
+                                                  });
+                                                }}
+                                                placeholder="Rasm URL manzilini kiriting"
+                                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+                                              />
+                                            </div>
+                                          ) : (
+                                            <div className="relative border border-slate-200 rounded-lg p-4 bg-slate-50">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  updateGroup(index, {
+                                                    gap_filling: {
+                                                      ...group.gap_filling,
+                                                      title: group.gap_filling?.title || '',
+                                                      principle: group.gap_filling?.principle || 'NMT_TWO',
+                                                      body: group.gap_filling?.body || '',
+                                                      diagram_chart: undefined
+                                                    }
+                                                  });
+                                                }}
+                                                className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors shadow-lg z-10"
+                                              >
+                                                <X className="w-4 h-4" />
+                                              </button>
+                                              <img 
+                                                src={group.gap_filling?.diagram_chart?.image} 
+                                                alt="Diagram/Flowchart preview" 
+                                                className="max-w-full h-auto rounded"
+                                                onError={(e) => {
+                                                  e.currentTarget.style.display = 'none';
+                                                }}
+                                              />
+                                              <div className="mt-2 text-xs text-slate-600 text-center">
+                                                ✓ Rasm yuklandi
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
 
                                       <div>
                                         <label className="block text-sm text-slate-700 mb-2">So'z Cheklovi</label>
@@ -1418,6 +2113,7 @@ export function AddQuestionPage() {
                                               title: group.gap_filling?.title || '',
                                               principle: e.target.value as any,
                                               body: group.gap_filling?.body || '',
+                                              diagram_chart: group.gap_filling?.diagram_chart,
                                             }
                                           })}
                                           className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
@@ -1440,6 +2136,7 @@ export function AddQuestionPage() {
                                               title: group.gap_filling?.title || '',
                                               principle: group.gap_filling?.principle || 'NMT_TWO',
                                               body: e.target.value,
+                                              diagram_chart: group.gap_filling?.diagram_chart,
                                             }
                                           })}
                                           placeholder="Savol matnini kiriting..."
@@ -1453,37 +2150,87 @@ export function AddQuestionPage() {
                                   {/* Identify Info Fields */}
                                   {isIdentifyInfo && (
                                     <div className="space-y-4 pt-4 border-t border-slate-300">
-                                      <div>
-                                        <label className="block text-sm text-slate-700 mb-2">Savol Sarlavhasi</label>
-                                        <input
-                                          type="text"
-                                          value={group.identify_info?.title || ''}
-                                          onChange={(e) => updateGroup(index, {
-                                            identify_info: {
-                                              title: e.target.value,
-                                              question: group.identify_info?.question || [''],
-                                            }
-                                          })}
-                                          placeholder="Masalan: Do the following statements agree with..."
-                                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
-                                        />
-                                      </div>
+                                      <TrueFalseNotGivenInputs
+                                        value={group.identify_info}
+                                        onChange={(data) => updateGroup(index, {
+                                          identify_info: {
+                                            title: data.title,
+                                            question: data.questions.map(q => q.text) // Backend expects question array of strings
+                                          }
+                                        })}
+                                      />
+                                    </div>
+                                  )}
 
-                                      <div>
-                                        <label className="block text-sm text-slate-700 mb-2">Savollar (har bir qatorda bittadan)</label>
-                                        <textarea
-                                          value={(group.identify_info?.question || ['']).join('\n')}
-                                          onChange={(e) => updateGroup(index, {
-                                            identify_info: {
-                                              title: group.identify_info?.title || '',
-                                              question: e.target.value.split('\n'), // ✅ Remove .filter() to allow Enter key
-                                            }
-                                          })}
-                                          placeholder="Har bir savolni yangi qatordan yozing..."
-                                          rows={6}
-                                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62] resize-none"
-                                        />
-                                      </div>
+                                  {/* Sentence Completion Fields */}
+                                  {isSentenceCompletion && (
+                                    <div className="space-y-4 pt-4 border-t border-slate-300">
+                                      <SentenceCompletionInputs
+                                        value={group.sentence_completion}
+                                        onChange={(data) => updateGroup(index, {
+                                          sentence_completion: data
+                                        })}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Summary Completion Fields */}
+                                  {isSummaryCompletion && (
+                                    <div className="space-y-4 pt-4 border-t border-slate-300">
+                                      <SummaryCompletionInputs
+                                        value={group.summary_completion}
+                                        onChange={(data) => updateGroup(index, {
+                                          summary_completion: data
+                                        })}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Flow Chart Completion Fields */}
+                                  {isFlowChartCompletion && (
+                                    <div className="space-y-4 pt-4 border-t border-slate-300">
+                                      <FlowChartCompletionInputs
+                                        value={group.flowchart_completion}
+                                        onChange={(data) => updateGroup(index, {
+                                          flowchart_completion: data
+                                        })}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Diagram Labeling Fields */}
+                                  {isDiagramLabeling && (
+                                    <div className="space-y-4 pt-4 border-t border-slate-300">
+                                      <DiagramLabelingInputs
+                                        value={group.diagram_labeling}
+                                        onChange={(data) => updateGroup(index, {
+                                          diagram_labeling: data
+                                        })}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Short Answer Fields */}
+                                  {isShortAnswer && (
+                                    <div className="space-y-4 pt-4 border-t border-slate-300">
+                                      <ShortAnswerInputs
+                                        value={group.short_answer}
+                                        onChange={(data) => updateGroup(index, {
+                                          short_answer: data
+                                        })}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Form Completion Fields */}
+                                  {isFormCompletion && (
+                                    <div className="space-y-4 pt-4 border-t border-slate-300">
+                                      <FormCompletionInputs
+                                        value={group.form_completion}
+                                        onChange={(data) => updateGroup(index, {
+                                          form_completion: data
+                                        })}
+                                      />
                                     </div>
                                   )}
 
@@ -1682,25 +2429,237 @@ export function AddQuestionPage() {
             </div>
           )}
 
-          {selectedSection === 'listening' && (
-            <div className="max-w-5xl mx-auto">
-              {/* Loading Indicator */}
-              {loadingParts || loading ? (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <Loader2 className="w-12 h-12 animate-spin text-[#042d62] mb-4" />
-                    <p className="text-slate-600">Yuklanmoqda...</p>
+          {selectedSection === 'listening' && (() => {
+            // Find existing part for current partType
+            const currentPart = parts.find((p: any) => p.part_type === selectedSubType);
+            const partExists = !!currentPart;
+            
+            // Check if all 4 parts already exist
+            const allPartsExist = parts.length >= 4;
+            
+            // If all parts exist and user selected a non-existing part, show message
+            if (allPartsExist && !partExists) {
+              return (
+                <div className="max-w-5xl mx-auto">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+                        <CheckCircle2 className="w-8 h-8 text-amber-600" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-slate-900 mb-2">
+                        Barcha Partlar Yaratilgan
+                      </h3>
+                      <p className="text-slate-600 max-w-md">
+                        Bu Listening test uchun barcha 4 ta part allaqachon yaratilgan. 
+                        Mavjud partni tahrirlash uchun yuqoridan tanlang.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              ) : (
-                <ListeningForm
-                  questionTypes={listeningQuestionTypes}
-                  onSave={handleListeningSave}
-                  saving={saving}
-                />
-              )}
-            </div>
-          )}
+              );
+            }
+            
+            // If part already exists, show read-only view
+            if (partExists) {
+              return (
+                <div className="max-w-5xl mx-auto">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    {/* Warning Banner */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-blue-200 p-6">
+                      <div className="flex items-start gap-4">
+                        <div className="flex-shrink-0 w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                          <CheckCircle2 className="w-6 h-6 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-blue-900 mb-2">
+                            ✅ Part {selectedSubType.slice(-1)} Allaqachon Yaratilgan
+                          </h4>
+                          <p className="text-sm text-blue-800 mb-3">
+                            Bu part allaqachon saqlangan. Hozircha tahrirlash funksiyasi mavjud emas.
+                          </p>
+                          <div className="flex flex-wrap gap-3">
+                            <button
+                              onClick={() => navigate(`/test/${testId}`)}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                            >
+                              ← Test sahifasiga qaytish
+                            </button>
+                            <button
+                              onClick={() => {
+                                // Select a non-existing part
+                                const availablePart = (['part_1', 'part_2', 'part_3', 'part_4'] as const).find(
+                                  type => !parts.some((p: any) => p.part_type === type)
+                                );
+                                if (availablePart) {
+                                  lastLoadedSubTypeRef.current = ''; // Clear tracking
+                                  setSelectedSubType(availablePart);
+                                }
+                              }}
+                              className="px-4 py-2 bg-white text-blue-600 border-2 border-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-sm font-medium"
+                              disabled={parts.length >= 4}
+                            >
+                              Yangi Part Yaratish
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Part Details (Read-only) */}
+                    <div className="p-6">
+                      <div className="space-y-6">
+                        {/* Part Title */}
+                        {currentPart?.title && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Part Sarlavhasi</label>
+                            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 text-slate-700">
+                              {currentPart.title}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Audio File */}
+                        {currentPart?.audio && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Audio Fayl</label>
+                            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                              <audio controls className="w-full">
+                                <source src={currentPart.audio} type="audio/mpeg" />
+                                Your browser does not support the audio element.
+                              </audio>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Question Groups */}
+                        {currentPart?.groups && currentPart.groups.length > 0 && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-3">Savol Guruhlari</label>
+                            <div className="space-y-3">
+                              {currentPart.groups.map((group: any, index: number) => (
+                                <div key={index} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <span className="px-3 py-1 bg-[#042d62] text-white rounded-full text-sm font-medium">
+                                      Guruh {index + 1}
+                                    </span>
+                                    <span className="text-sm text-slate-600">
+                                      Savollar {group.from_value} - {group.to_value}
+                                    </span>
+                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                      {group.listening_question_type?.type || group.listening_question_type}
+                                    </span>
+                                  </div>
+                                  {group.completion?.title && (
+                                    <p className="text-sm text-slate-600 mt-2">
+                                      <strong>Sarlavha:</strong> {group.completion.title}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            
+            // Part doesn't exist - show creation form
+            // ✅ EXTRA SAFETY: Double check before showing form
+            if (parts.length >= 4 || partExists) {
+              return (
+                <div className="max-w-5xl mx-auto">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+                        <CheckCircle2 className="w-8 h-8 text-amber-600" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-slate-900 mb-2">
+                        Part Allaqachon Mavjud
+                      </h3>
+                      <p className="text-slate-600 max-w-md mb-4">
+                        Bu part allaqachon yaratilgan. Tahrirlash uchun yuqoridan tanlang.
+                      </p>
+                      <button
+                        onClick={() => navigate(`/test/${testId}`)}
+                        className="px-6 py-3 bg-[#042d62] text-white rounded-lg hover:bg-[#053a75] transition-colors"
+                      >
+                        ← Test sahifasiga qaytish
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            
+            return (
+              <div className="max-w-5xl mx-auto">
+                {/* Loading Indicator */}
+                {loadingParts || loading ? (
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <Loader2 className="w-12 h-12 animate-spin text-[#042d62] mb-4" />
+                      <p className="text-slate-600">Yuklanmoqda...</p>
+                    </div>
+                  </div>
+                ) : parts.length >= 4 ? (
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                        <CheckCircle2 className="w-12 h-12 text-green-600" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-slate-900 mb-3">
+                        ✅ Barcha 4 ta part yaratilgan!
+                      </h3>
+                      <p className="text-slate-600 mb-6 max-w-md">
+                        Bu Listening test uchun barcha partlar muvaffaqiyatli yaratildi. Yangi part qo'shish uchun yangi Test yarating.
+                      </p>
+                      <button
+                        onClick={() => navigate(`/test/${testId}`)}
+                        className="px-6 py-3 bg-[#042d62] text-white rounded-xl hover:bg-[#053a75] transition-colors"
+                      >
+                        Test Sahifasiga Qaytish
+                      </button>
+                    </div>
+                  </div>
+                ) : parts.length >= 4 ? (
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                        <CheckCircle2 className="w-12 h-12 text-green-600" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-slate-900 mb-3">
+                        ✅ Barcha 4 ta part yaratilgan!
+                      </h3>
+                      <p className="text-slate-600 mb-6 max-w-md">
+                        Bu Listening uchun barcha partlar (Part 1, 2, 3, 4) allaqachon yaratilgan. 
+                        Yangi part qo&apos;shish uchun yangi Test yarating.
+                      </p>
+                      <button
+                        onClick={() => navigate(`/test/${testId}`)}
+                        className="px-6 py-3 bg-[#042d62] text-white rounded-xl hover:bg-[#053a75] transition-colors"
+                      >
+                        Test Sahifasiga Qaytish
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="max-w-5xl mx-auto">
+                    <ListeningForm
+                      questionTypes={listeningQuestionTypes}
+                      initialTitle={title}
+                      initialAudioUrl={audioUrl}
+                      initialGroups={groups}
+                      onSave={handleListeningSave}
+                      saving={saving || loadingParts}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {selectedSection === 'writing' && (() => {
             // Find existing task for current taskType

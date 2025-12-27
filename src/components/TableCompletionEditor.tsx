@@ -7,13 +7,14 @@ export type CellType = 'text' | 'answer';
 
 export interface TableCell {
   type: CellType;
-  content: string; // For text cells, stores the text. For answer cells, empty
+  content: string; // For text cells, can contain (1), (2) placeholders. For answer cells, empty
   isAnswer: boolean; // Convenience flag
 }
 
 export interface TableCompletionData {
   principle: CriteriaType;
   instruction?: string; // Custom instruction text
+  tableTitle?: string; // Table title (e.g., "Development of Time Standardisation")
   rows: TableCell[][]; // Each row can have different number of cells
   questionNumberStart?: number; // Starting question number for auto-numbering
 }
@@ -33,6 +34,7 @@ export function TableCompletionEditor({ data, onChange, mode = 'edit' }: TableCo
       onChange({
         principle: data.principle || 'NMT_TWO',
         instruction: data.instruction,
+        tableTitle: data.tableTitle,
         rows: [
           [
             { type: 'text', content: '', isAnswer: false },
@@ -113,41 +115,91 @@ export function TableCompletionEditor({ data, onChange, mode = 'edit' }: TableCo
   };
 
   const getAnswerCount = () => {
-    return data.rows.flat().filter(cell => cell.isAnswer).length;
+    // Count both explicit answer cells and gap placeholders in text cells
+    let count = 0;
+    
+    data.rows.forEach(row => {
+      row.forEach(cell => {
+        if (cell.isAnswer) {
+          count++;
+        } else if (cell.content) {
+          // Count (1), (2), etc. in text content
+          const matches = cell.content.match(/\(\d+\)/g);
+          if (matches) {
+            count += matches.length;
+          }
+        }
+      });
+    });
+    
+    return count;
   };
 
   const getInstructionText = () => {
     if (data.instruction) return data.instruction;
     
     const criteriaLabels: Record<CriteriaType, string> = {
-      'ONE_WORD': 'Write ONE WORD ONLY for each answer.',
-      'ONE_WORD_OR_NUMBER': 'Write ONE WORD AND/OR A NUMBER for each answer.',
-      'NMT_ONE': 'Write NO MORE THAN ONE WORD for each answer.',
-      'NMT_TWO': 'Write NO MORE THAN TWO WORDS for each answer.',
-      'NMT_THREE': 'Write NO MORE THAN THREE WORDS for each answer.',
-      'NMT_TWO_NUM': 'Write NO MORE THAN TWO WORDS AND/OR A NUMBER for each answer.',
-      'NMT_THREE_NUM': 'Write NO MORE THAN THREE WORDS AND/OR A NUMBER for each answer.',
-      'NUMBER_ONLY': 'Write A NUMBER ONLY for each answer.',
+      'ONE_WORD': 'Choose ONE WORD ONLY from the passage.',
+      'ONE_WORD_OR_NUMBER': 'Choose ONE WORD AND/OR A NUMBER from the passage.',
+      'NMT_ONE': 'Choose NO MORE THAN ONE WORD from the passage.',
+      'NMT_TWO': 'Choose NO MORE THAN TWO WORDS from the passage.',
+      'NMT_THREE': 'Choose NO MORE THAN THREE WORDS from the passage.',
+      'NMT_TWO_NUM': 'Choose NO MORE THAN TWO WORDS AND/OR A NUMBER from the passage.',
+      'NMT_THREE_NUM': 'Choose NO MORE THAN THREE WORDS AND/OR A NUMBER from the passage.',
+      'NUMBER_ONLY': 'Choose A NUMBER ONLY from the passage.',
       'FROM_BOX': 'Choose your answers from the box.',
     };
     return criteriaLabels[data.principle] || '';
   };
 
+  // Parse text content and render with input fields for gaps
+  const renderCellContent = (content: string) => {
+    if (!content) return <span className="text-slate-400">(Bo'sh)</span>;
+    
+    // Split by (1), (2), etc. pattern
+    const parts = content.split(/(\(\d+\))/);
+    
+    return (
+      <span>
+        {parts.map((part, index) => {
+          // Check if this part is a gap placeholder like (1), (2)
+          const gapMatch = part.match(/\((\d+)\)/);
+          if (gapMatch) {
+            return (
+              <span key={index} className="inline-flex items-center gap-1 mx-1">
+                <span className="font-semibold text-slate-700">{part}</span>
+                <span className="inline-block w-24 h-1 border-b-2 border-slate-800 align-middle"></span>
+              </span>
+            );
+          }
+          return <span key={index}>{part}</span>;
+        })}
+      </span>
+    );
+  };
+
   if (mode === 'preview') {
     return (
       <div className="space-y-4">
+        {/* Question Number Range */}
+        {data.questionNumberStart && getAnswerCount() > 0 && (
+          <div className="text-sm text-slate-900 font-semibold">
+            Questions {data.questionNumberStart} – {data.questionNumberStart + getAnswerCount() - 1}
+          </div>
+        )}
+
         {/* Instructions */}
-        <div className="p-4 bg-slate-50 border border-slate-300 rounded">
+        <div className="space-y-1">
           <p className="text-sm text-slate-900">
             <strong>Complete the table below.</strong>
           </p>
-          <p className="text-sm text-slate-700 mt-1">{getInstructionText()}</p>
+          <p className="text-sm text-slate-700">{getInstructionText()}</p>
         </div>
 
-        {/* Question Number Range */}
-        {data.questionNumberStart && getAnswerCount() > 0 && (
+        {/* Table Title */}
+        {data.tableTitle && (
           <div className="text-sm text-slate-900">
-            <strong>Questions {data.questionNumberStart}–{data.questionNumberStart + getAnswerCount() - 1}</strong>
+            <strong>Table: {data.tableTitle}</strong>
           </div>
         )}
 
@@ -176,7 +228,7 @@ export function TableCompletionEditor({ data, onChange, mode = 'edit' }: TableCo
                               </div>
                             ) : (
                               <div className="text-sm text-slate-900 min-h-[40px] flex items-center">
-                                {cell.content || '\u00A0'}
+                                {renderCellContent(cell.content) || '\u00A0'}
                               </div>
                             )}
                           </td>
@@ -205,6 +257,23 @@ export function TableCompletionEditor({ data, onChange, mode = 'edit' }: TableCo
     <div className="space-y-6">
       {/* Controls */}
       <div className="space-y-4">
+        {/* Table Title */}
+        <div>
+          <label className="block text-sm text-slate-700 mb-2">
+            Jadval Sarlavhasi (Table Title)
+          </label>
+          <input
+            type="text"
+            value={data.tableTitle || ''}
+            onChange={(e) => onChange({ ...data, tableTitle: e.target.value })}
+            placeholder="Masalan: Development of Time Standardisation"
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            Bu jadval ustida ko'rsatiladi
+          </p>
+        </div>
+
         {/* Principle Selection */}
         <div>
           <label className="block text-sm text-slate-700 mb-2">
@@ -232,9 +301,12 @@ export function TableCompletionEditor({ data, onChange, mode = 'edit' }: TableCo
             type="text"
             value={data.instruction || ''}
             onChange={(e) => onChange({ ...data, instruction: e.target.value })}
-            placeholder="Odatiy ko'rsatma avtomatik yaratiladi"
+            placeholder="Bo'sh qoldirilsa avtomatik yaratiladi"
             className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#042d62]"
           />
+          <p className="text-xs text-slate-500 mt-1">
+            Odatiy: &quot;{getInstructionText()}&quot;
+          </p>
         </div>
 
         {/* Question Number Start */}
@@ -386,14 +458,22 @@ export function TableCompletionEditor({ data, onChange, mode = 'edit' }: TableCo
                           </div>
                         </div>
                       ) : (
-                        <input
-                          type="text"
-                          value={cell.content}
-                          onChange={(e) => updateCell(rowIndex, colIndex, { content: e.target.value })}
-                          onClick={(e) => e.stopPropagation()}
-                          placeholder="Matn kiriting..."
-                          className="w-full px-2 py-1 text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-[#042d62] focus:border-transparent"
-                        />
+                        <div>
+                          <textarea
+                            value={cell.content}
+                            onChange={(e) => updateCell(rowIndex, colIndex, { content: e.target.value })}
+                            onClick={(e) => e.stopPropagation()}
+                            placeholder="Matn kiriting yoki (1), (2) yozing..."
+                            rows={2}
+                            className="w-full px-2 py-1 text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-[#042d62] focus:border-transparent resize-none"
+                          />
+                          {/* Show gap count */}
+                          {cell.content && cell.content.match(/\(\d+\)/g) && (
+                            <div className="mt-1 text-xs text-green-600">
+                              ✓ {cell.content.match(/\(\d+\)/g)?.length} javob topildi
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
